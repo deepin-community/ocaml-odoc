@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -e
+
+this=odoc-on-odoc
+indir=${PWD}
+outdir=${ADT_ARTIFACTS:-/tmp}/${this}
+mkdir -p ${outdir}
+cp -r ${indir}/*  ${outdir}
+[ ! -d ${indir}/.pc ] || cp -r ${indir}/.pc ${outdir} 
+
+cd ${outdir}
+
+set +e
+QUILT_PATCHES=debian/patches quilt push -a 2>&1
+# quilt exit status is 2 when series is already fully applied
+if [ $? -eq 1 ]; then exit 1; fi
+set -e
+
+dune build @doc 2>&1
+
+nb_html=`find _build/default/_doc/_html/ -name "*.html" | wc -l`
+echo -n "Generated $nb_html HTML pages. "
+if [ $nb_html -gt 100 ]; then
+    echo "That number seems OK."
+else
+    echo "That is not enough."
+fi

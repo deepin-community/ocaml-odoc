@@ -1,0 +1,62 @@
+ocaml-odoc (1.5.2+dfsg2-1) unstable; urgency=medium
+
+  [ Johannes 'josch' Schauer ]
+  * Simplify patch no-vendored-js-highlight: copy odoc.css at runtime,
+    instead of creating a symlink.
+  * Build docs and run tests
+
+  [ Ralf Treinen ]
+  * Repack source without test/highlight/highlight.pack.js
+  * gbp.conf: also filter out the symlink test/highlight/highlight.pack.js
+  * Dropped override of dh_dwz, which is no longer needed.
+  * Add build-dependency libjs-highlight.js as this is needed to build the docs
+
+ -- Ralf Treinen <treinen@debian.org>  Tue, 19 Jan 2021 20:32:08 +0100
+
+ocaml-odoc (1.5.2+dfsg-1) unstable; urgency=medium
+
+  [ Ralf Treinen ]
+  * New upstream release 
+  * Promote libjs-highlight.js from Recommends to Depends (closes: #979493)
+  * Standards-Version 4.5.1 (no change)
+
+  [ Johannes 'josch' Schauer ]
+  * Add debian/salsa-ci.yml
+
+ -- Ralf Treinen <treinen@debian.org>  Sun, 10 Jan 2021 15:42:22 +0100
+
+ocaml-odoc (1.5.1+dfsg-2) unstable; urgency=medium
+
+  * Fix as-installed test odoc-on-odoc: since we are running odoc on its own
+    source code we have to make sure that patches are applied.
+  * Set Rules-Requires-Root to no
+
+ -- Ralf Treinen <treinen@debian.org>  Sun, 16 Aug 2020 17:19:43 +0200
+
+ocaml-odoc (1.5.1+dfsg-1) unstable; urgency=medium
+
+  * Repack sources without vendored js code
+  * Fix Vcs-{Browser,Git}
+  * Patch odoc-on-odoc: fix odoc errors on its own source code
+    (closes: #964407)
+  * Fix NAME section in manpage
+  * debian/rules: add override of dh_dwz
+  * debian/watch: add dversionmangle
+
+ -- Ralf Treinen <treinen@debian.org>  Sun, 02 Aug 2020 21:09:46 +0200
+
+ocaml-odoc (1.5.1-1) unstable; urgency=medium
+
+  * New upstream version
+  * debian/libodoc-ocaml-dev.install.in: restrict installation of *.a and
+    *.cmxa files to OPT architectures.
+  * Debhelper compatibility level 13:
+    - drop override of dh_missing as --fail-missing is now the default.
+
+ -- Ralf Treinen <treinen@debian.org>  Wed, 24 Jun 2020 11:02:36 +0200
+
+ocaml-odoc (1.5.0-1) unstable; urgency=medium
+
+  * Initial packaging (closes: #900674)
+
+ -- Ralf Treinen <treinen@debian.org>  Mon, 27 Apr 2020 15:53:14 +0200

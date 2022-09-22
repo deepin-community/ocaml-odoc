@@ -1,0 +1,76 @@
+Source: ocaml-odoc
+Section: ocaml
+Priority: optional
+Maintainer: Debian OCaml Maintainers <debian-ocaml-maint@lists.debian.org>
+Uploaders: Ralf Treinen <treinen@debian.org>
+Build-Depends: debhelper-compat (= 13),
+ dh-ocaml,
+ ocaml-nox (>= 4.02.0),
+ cppo,
+ ocaml-dune,
+ libastring-ocaml-dev,
+ libfpath-ocaml-dev,
+ libcmdliner-ocaml-dev,
+ libresult-ocaml-dev,
+ libtyxml-ocaml-dev (>= 4.3.0),
+ libjs-highlight.js
+Rules-Requires-Root: no
+Standards-Version: 4.5.1
+Homepage: https://github.com/ocaml/odoc
+Vcs-Browser: https://salsa.debian.org/ocaml-team/ocaml-odoc
+Vcs-Git: https://salsa.debian.org/ocaml-team/ocaml-odoc.git
+
+Package: ocaml-odoc
+Architecture: any
+Depends: ${misc:Depends}, ${ocaml:Depends}, ${shlibs:Depends},
+ libjs-highlight.js
+Provides: ${ocaml:Provides}
+Description: documentation generator for OCaml (standalone tool)
+ Odoc is a documentation generator for the OCaml programming language.
+ It reads doc comments contained in OCaml source code, delimited with
+ (** ... *), and produces HTML.
+ .
+ Odoc's main advantage over ocamldoc is an accurate cross-referencer,
+ which handles the complexity of the OCaml module system. Odoc also
+ offers a good opportunity to improve HTML output compared to ocamldoc.
+ .
+ Furthermore, odoc can be used by dune to generate documentation of
+ OCaml projects using dune as a build-system.
+ .
+ This package contains the odoc tool.
+
+Package: libodoc-ocaml-dev
+Architecture: any
+Depends: ${misc:Depends}, ${ocaml:Depends}, ${shlibs:Depends}
+Provides: ${ocaml:Provides}
+Description: documentation generator for OCaml (development libraries)
+ Odoc is a documentation generator for the OCaml programming language.
+ It reads doc comments contained in OCaml source code, delimited with
+ (** ... *), and produces HTML.
+ .
+ Odoc's main advantage over ocamldoc is an accurate cross-referencer,
+ which handles the complexity of the OCaml module system. Odoc also
+ offers a good opportunity to improve HTML output compared to ocamldoc.
+ .
+ Furthermore, odoc can be used by dune to generate documentation of
+ OCaml projects using dune as a build-system.
+ .
+ This package contains the development files.
+
+Package: libodoc-ocaml
+Architecture: any
+Depends: ${misc:Depends}, ${ocaml:Depends}, ${shlibs:Depends}
+Provides: ${ocaml:Provides}
+Description: documentation generator for OCaml (runtime libraries)
+ Odoc is a documentation generator for the OCaml programming language.
+ It reads doc comments contained in OCaml source code, delimited with
+ (** ... *), and produces HTML.
+ .
+ Odoc's main advantage over ocamldoc is an accurate cross-referencer,
+ which handles the complexity of the OCaml module system. Odoc also
+ offers a good opportunity to improve HTML output compared to ocamldoc.
+ .
+ Furthermore, odoc can be used by dune to generate documentation of
+ OCaml projects using dune as a build-system.
+ .
+ This package contains the runtime files.

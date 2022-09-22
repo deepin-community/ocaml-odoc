@@ -1,0 +1,2 @@
+DYN: @OCamlStdlibDir@/odoc/*/*.cmxs
+DYN: @OCamlStdlibDir@/dune_odoc_test/*.cmxs

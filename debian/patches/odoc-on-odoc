@@ -1,0 +1,42 @@
+Author: Ralf Treinen <treinen@debian.org>
+Description: make odoc pass on its own source code
+
+Index: ocaml-odoc/src/odoc/fs.mli
+===================================================================
+--- ocaml-odoc.orig/src/odoc/fs.mli	2020-06-24 10:41:49.129019183 +0200
++++ ocaml-odoc/src/odoc/fs.mli	2020-07-02 08:15:06.525196960 +0200
+@@ -34,7 +34,7 @@
+   val append : t -> t -> t
+ 
+   val reach_from : dir:t -> string -> t
+-  (** @raises [Invalid_arg _] if [parent/name] exists but is not a directory. *)
++  (** raises [Invalid_arg _] if [parent/name] exists but is not a directory. *)
+ 
+   val mkdir_p : t -> unit
+ 
+Index: ocaml-odoc/src/odoc/depends.mli
+===================================================================
+--- ocaml-odoc.orig/src/odoc/depends.mli	2020-06-24 10:41:49.129019183 +0200
++++ ocaml-odoc/src/odoc/depends.mli	2020-07-02 08:20:04.250989819 +0200
+@@ -27,7 +27,7 @@
+ end
+ 
+ val for_compile_step : Fs.File.t -> Compile.t list
+-(** Takes a .cm{i,t,ti} file and returns the list of its dependencies. *)
++(** Takes a .cm\{i,t,ti\} file and returns the list of its dependencies. *)
+ 
+ val for_html_step : Fs.Directory.t -> (Odoc_model.Root.t list, [> msg]) result
+ (** Takes the directory where the .odoc files of a given package are stored and
+Index: ocaml-odoc/src/odoc/compile.mli
+===================================================================
+--- ocaml-odoc.orig/src/odoc/compile.mli	2020-06-24 10:41:49.129019183 +0200
++++ ocaml-odoc/src/odoc/compile.mli	2020-07-02 08:21:32.647522016 +0200
+@@ -16,7 +16,7 @@
+ 
+ open Or_error
+ 
+-(** Produces .odoc files out of .cm{i,t,ti} or .mld files. *)
++(** Produces .odoc files out of .cm\{i,t,ti\} or .mld files. *)
+ 
+ val cmti :
+   env:Env.builder -> package:Odoc_model.Root.Package.t -> hidden:bool ->

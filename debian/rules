@@ -1,0 +1,20 @@
+#!/usr/bin/make -f
+
+export DESTDIR=$(CURDIR)/debian/tmp
+include /usr/share/ocaml/ocamlvars.mk
+
+%:
+	dh $@ --with ocaml
+
+override_dh_auto_clean:
+	dune clean
+
+override_dh_auto_build:
+	make build docs
+
+override_dh_auto_test:
+	make dune-test
+
+override_dh_auto_install:
+	dune install
+

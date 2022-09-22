@@ -1,0 +1,15 @@
+@OCamlStdlibDir@/odoc/META
+@OCamlStdlibDir@/odoc/dune-package
+@OCamlStdlibDir@/odoc/META
+@OCamlStdlibDir@/odoc/*/*.cm[aitx]
+@OCamlStdlibDir@/odoc/*/*.cmti
+@OCamlStdlibDir@/odoc/*/*.ml
+@OCamlStdlibDir@/odoc/*/*.mli
+@OCamlStdlibDir@/dune_odoc_test/META
+@OCamlStdlibDir@/dune_odoc_test/dune-package
+@OCamlStdlibDir@/dune_odoc_test/*.cm[aitx]
+@OCamlStdlibDir@/dune_odoc_test/*.ml
+OPT: @OCamlStdlibDir@/odoc/*/*.a
+OPT: @OCamlStdlibDir@/odoc/*/*.cmxa
+OPT: @OCamlStdlibDir@/dune_odoc_test/*.a
+OPT: @OCamlStdlibDir@/dune_odoc_test/*.cmxa

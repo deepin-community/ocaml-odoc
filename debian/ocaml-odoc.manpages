@@ -1,0 +1,2 @@
+# create manpage with "odoc --help=groff"
+debian/odoc.1

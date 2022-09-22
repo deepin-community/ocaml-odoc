@@ -1,0 +1,2 @@
+Tests: odoc-on-odoc
+Depends: @, quilt, @builddeps@

@@ -1,0 +1,51 @@
+Author: Ralf Treinen <treinen@debian.org>
+Description: removed vendored highlight js library.
+  Instead of using the content of the vendored js library, it uses
+  highlight.min.js from the libjs-highlight.js package
+
+--- a/src/odoc/dune
++++ b/src/odoc/dune
+@@ -26,17 +26,16 @@
+ 
+ (rule
+  (targets highlight_js.ml)
+- (deps (:js ../vendor/highlight.pack.js))
++; (deps (:js ../vendor/highlight.pack.js))
+  (action
+   (with-stdout-to %{targets}
+    (progn
+     (echo "let content = {js|")
+-    (cat %{js})
++;    (cat %{js})
+     (echo "|js}")))))
+ 
+ ; Install theme files for odig.
+ (install
+  (section share)
+  (files
+-  (etc/odoc.css as odoc-theme/default/odoc.css)
+-  (../vendor/highlight.pack.js as odoc-theme/default/highlight.pack.js)))
++  (etc/odoc.css as odoc-theme/default/odoc.css)))
+--- a/src/odoc/support_files.ml
++++ b/src/odoc/support_files.ml
+@@ -7,10 +7,19 @@ let iter_files f ?(without_theme = false
+     f name content
+   in
+ 
++  let highlight_js_content =
++    let ic = open_in "/usr/share/javascript/highlight.js/highlight.min.js" in
++    let n = in_channel_length ic in
++    let s = Bytes.create n in
++    really_input ic s 0 n;
++    close_in ic;
++    (Bytes.unsafe_to_string s)
++  in
++
+   if not without_theme then begin
+     file "odoc.css" Css_file.content
+   end;
+-  file "highlight.pack.js" Highlight_js.content
++  file "highlight.pack.js" highlight_js_content
+ 
+ let write =
+   iter_files begin fun name content ->
