@@ -1,26 +1,14 @@
-module Html = Tyxml.Html
-
 (* Shared utility functions *)
+
+(* = Option.fold *)
+let fold_option ~none ~some = function Some x -> some x | None -> none
 
 let rec list_concat_map ?sep ~f = function
   | [] -> []
-  | [x] -> f x
-  | x :: xs ->
-    let hd = f x in
-    let tl = list_concat_map ?sep ~f xs in
-    match sep with
-    | None -> hd @ tl
-    | Some sep -> hd @ sep :: tl
+  | [ x ] -> f x
+  | x :: xs -> (
+      let hd = f x in
+      let tl = list_concat_map ?sep ~f xs in
+      match sep with None -> hd @ tl | Some sep -> hd @ (sep :: tl))
 
-let rec list_concat_map_list_sep ~sep ~f = function
-  | [] -> []
-  | [x] -> f x
-  | x :: xs ->
-    let hd = f x in
-    let tl = list_concat_map_list_sep ~sep ~f xs in
-    hd @ sep @ tl
-
-let optional_code children =
-  match children with
-  | [] -> []
-  | children -> [ Html.code children ]
+let optional_elt f ?a = function [] -> [] | l -> [ f ?a l ]

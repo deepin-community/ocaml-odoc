@@ -1,9 +1,125 @@
-1.5.2
+2.1.1
+-----
+
+- OCaml 5.0 compatibility (@dra27, #873)
+
+2.1.0
 -----
 
 Additions
+- New subcommand to resolve references (@panglesd, @lubega-simon, #812)
+- Improved rendering of long signatures (@panglesd, #782)
+- Handle comments attached to open statement as floating comment, instead
+  of dropping them (@panglesd, #797)
+- Empty includes (containing entirely shadowed entries) are now hidden (@panglesd, #798)
 
-- Compatibility with OCaml 4.12 (#531, @octachron)
+Bugs fixed
+- Fix a missing Result constructor during compile. This will cause some
+  functor arguments to have different filenames (@jonludlam, #795)
+- Better memory/disk space usage when handling module alias chains (@jonludlam, #799)
+- Resolving class-type paths (ie., `val x : #c`) (@jonludlam, #809)
+- Skip top-level attributes while extracting the top comment. Fix top-comment extraction with PPX preprocessing (@jorisgio, #819)
+- Better handling of @canonical tags (@jonludlam, #820)
+- css: improved layout (@jonludlam, @Julow, #822)
+
+2.0.2
+-----
+
+Additions
+- Compatibility with OCaml 4.14 (@patricoferris, @kit-ty-kate, #788)
+
+2.0.1
+-----
+
+Bugs fixed
+- Man page renderer fails to output pages that have children (@jonludlam, @Julow, #766)
+- Fix resolution of unprefixed references to pages (@Julow, #755)
+- Fix reporting of ambiguous labels (@Julow, @jonludlam, #773, #781)
+- Allow referencing of labels in the top comment (@jonludlam, #771)
+
+Additions
+- Strip unquoted spaces in identifiers for a more flexible reference syntax (@lubega-simon, @panglesd, #783)
+- Add context to messages raised in expansions of includes (@Julow, #780)
+
+2.0.0
+-----
+Breaking changes
+- Remove odoc-parser into a separate repository (@jonludlam, #700)
+
+Additions
+- OCaml 4.13 support (@octachron, #687, #689)
+- Better errors/warnings (@Julow, #692, #717, #720, #732)
+- ModuleType 'Alias' support (@jonludlam, #703)
+- Improved test suite (@lubega-simon, #697)
+- Improved documentation (@lubega-simon, @jonludlam, #702, #733)
+- Strengthen module types (@jonludlam, #731)
+
+Bugs fixed
+- `uwt` now can be documented (@jonludlam, #708)
+- Fix resolution involving deeply nested substitutions (@jonludlam, #727)
+- Fix off-by-one error in error reporting (@asavahista, #736)
+
+
+2.0.0~beta4
+-----------
+
+Additions
+- Handle @canonical tags in the top-comment of modules (@Julow, #662)
+- Simplify paths referring to Stdlib (@jonludlam, #677)
+- New odoc command to report warnings encountered during compilation/linking (@Julow, #667)
+- Anchors on type extensions (@Julow, #684)
+
+Bugs fixed
+- Resolve references in module synopses (@Julow, #658)
+- Fix reference resolution in the presence of shadowing (@Julow, #682)
+
+2.0.0~beta3
+-----------
+
+Breaking changes
+- Refactor the comment parser in preparation for it to be octavius 2 (@jonludlam, #621)
+
+Additions
+- Better HTML rendering (@dbuenzli, #607, #612, #615)
+- Better handling of signature comments (@Julow, #627, #629, #640, #643, #647, #654)
+- Centre, left and right alignment constructs now parse correctly (@lubegasimon, #624)
+- Allow reference to pages that contain hyphens and dots (@lubegasimon, #622)
+- Allow type definitions to be copied and pasted with correct syntax (@Drup, #626)
+- Install Ocamlary as a library for testing (@dbuenzli, #639)
+- Handle @canonical tags on compilation units (@Julow, #649)
+- Alias more when strengthening (@jonludlam, #653)
+- Light theme fixes (@xvw, #660)
+
+Bugs fixed
+- LaTeX: Hardened description environments (@Octachron, #608)
+
+
+2.0.0~beta2
+-----------
+
+Additions
+
+- Add the ability to specifiy canonical paths for types and module types (@jonludlam, #596)
+- Several improvements to the HTML tree (@dbuenzli, #600, #605, #589, @Drup, #579)
+- Render module synopses in `{!modules:...}` (@Julow, #597)
+
+Bugs fixed
+
+- Fix for resolving references in mld files (@jonludlam, #611)
+- Fix placement of documentation in module aliases (@Julow, #606)
+- Fix breakage involving includes and shadowing (@jonludlam, #603)
+- Don't link to hidden items (@lubegasimon, #583)
+- Don't remove docs of inlined includes (@Julow, #595)
+- Don't render shadowed values (@lubegasimon, #580)
+- Fix unresolved references in the first comment of a file (@Julow, #592)
+
+
+2.0.0~beta1
+-----------
+
+- New model for expanding and cross referencing (@jonludlam, @Julow, @lubegasimon)
+- New document output layer, supporting HTML, LaTeX and man page output (@Drup, @Octachron, @jonludlam, @Julow, @lubegasimon)
+- Experimental parent/child support for structured output (@jonludlam)
 
 1.5.1
 -----

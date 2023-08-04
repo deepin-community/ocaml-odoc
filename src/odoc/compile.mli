@@ -16,24 +16,19 @@
 
 open Or_error
 
-(** Produces .odoc files out of .cm{i,t,ti} or .mld files. *)
+type parent_cli_spec =
+  | CliParent of string
+  | CliPackage of string
+  | CliNoparent
 
-val cmti :
-  env:Env.builder -> package:Odoc_model.Root.Package.t -> hidden:bool ->
-  output:Fs.File.t -> warn_error:bool -> Fs.File.t ->
-  (unit, [> msg]) result
+(** Produces .odoc files out of [.cm{i,t,ti}] or .mld files. *)
 
-val cmt :
-  env:Env.builder -> package:Odoc_model.Root.Package.t -> hidden:bool ->
-  output:Fs.File.t -> warn_error:bool -> Fs.File.t ->
-  (unit, [> msg]) result
-
-val cmi :
-  env:Env.builder -> package:Odoc_model.Root.Package.t -> hidden:bool ->
-  output:Fs.File.t -> warn_error:bool -> Fs.File.t ->
-  (unit, [> msg]) result
-
-val mld :
-  env:Env.builder -> package:Odoc_model.Root.Package.t ->
-  output:Fs.File.t -> warn_error:bool -> Fs.File.t ->
-  (unit, [> msg]) result
+val compile :
+  resolver:Resolver.t ->
+  parent_cli_spec:parent_cli_spec ->
+  hidden:bool ->
+  children:string list ->
+  output:Fs.File.t ->
+  warnings_options:Odoc_model.Error.warnings_options ->
+  Fs.File.t ->
+  (unit, [> msg ]) result
