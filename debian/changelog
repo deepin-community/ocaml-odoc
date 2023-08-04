@@ -1,3 +1,45 @@
+ocaml-odoc (2.1.1+dfsg-3) unstable; urgency=medium
+
+  * Team upload
+  * Use ocaml_dune DH buildsystem
+
+ -- Stéphane Glondu <glondu@debian.org>  Sat, 15 Jul 2023 16:04:03 +0200
+
+ocaml-odoc (2.1.1+dfsg-2) unstable; urgency=medium
+
+  * Team upload
+  * Avoid warnings-as-errors in autopkgtests
+
+ -- Stéphane Glondu <glondu@debian.org>  Sun, 12 Feb 2023 12:18:59 +0100
+
+ocaml-odoc (2.1.1+dfsg-1) unstable; urgency=medium
+
+  * New upstream release (closes: #1015758)
+  * Standards-Version 4.6.1 (no change)
+
+ -- Ralf Treinen <treinen@debian.org>  Mon, 05 Sep 2022 21:16:57 +0200
+
+ocaml-odoc (2.1.0+dfsg-1) unstable; urgency=medium
+
+  * Team upload
+  * New upstream release
+
+ -- Stéphane Glondu <glondu@debian.org>  Wed, 02 Mar 2022 13:26:41 +0100
+
+ocaml-odoc (2.0.2+dfsg-1) unstable; urgency=medium
+
+  [ Stéphane Glondu ]
+  * Team upload
+  * New upstream release
+  * Bump Standards-Version to 4.6.0
+  * Update debian/watch
+
+  [ Debian Janitor ]
+  * Trim trailing whitespace.
+  * Set upstream metadata fields: Repository, Repository-Browse.
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 10 Jan 2022 04:24:57 +0100
+
 ocaml-odoc (1.5.2+dfsg2-1) unstable; urgency=medium
 
   [ Johannes 'josch' Schauer ]
@@ -16,7 +58,7 @@ ocaml-odoc (1.5.2+dfsg2-1) unstable; urgency=medium
 ocaml-odoc (1.5.2+dfsg-1) unstable; urgency=medium
 
   [ Ralf Treinen ]
-  * New upstream release 
+  * New upstream release
   * Promote libjs-highlight.js from Recommends to Depends (closes: #979493)
   * Standards-Version 4.5.1 (no change)
 

@@ -18,31 +18,36 @@ open Or_error
 
 (** Utilities to manipulate files and paths. *)
 
-type file
+type file = Fpath.t
 
 type directory
 
 module Directory : sig
-
   open Or_error
 
   type t = directory
 
   val dirname : t -> t
+
   val basename : t -> t
 
   val append : t -> t -> t
 
   val reach_from : dir:t -> string -> t
-  (** @raises [Invalid_arg _] if [parent/name] exists but is not a directory. *)
+  (** @raises Invalid_arg if [parent/name] exists but is not a directory. *)
 
   val mkdir_p : t -> unit
 
   val of_string : string -> t
+
   val to_string : t -> string
 
-  val fold_files_rec_result : ?ext:string ->
-    ('a -> file -> ('a, msg) result) -> 'a -> t -> ('a, [> msg ]) result
+  val fold_files_rec_result :
+    ?ext:string ->
+    ('a -> file -> ('a, msg) result) ->
+    'a ->
+    t ->
+    ('a, [> msg ]) result
   (** [fold_files_rec_result ~ext f acc d] recursively folds [f] over the files
       with extension matching [ext] (defaults to [""]) contained in [d]
       and its sub directories. Stop as soon as [f] returns [Error _]. *)
@@ -51,18 +56,24 @@ module Directory : sig
 end
 
 module File : sig
-
   type t = file
 
   val create : directory:Directory.t -> name:string -> t
 
   val dirname : t -> Directory.t
+
   val basename : t -> t
 
+  val append : Directory.t -> t -> t
+
   val set_ext : string -> t -> t
+
   val has_ext : string -> t -> bool
 
+  val get_ext : t -> string
+
   val of_string : string -> t
+
   val to_string : t -> string
 
   val read : t -> (string, [> msg ]) result

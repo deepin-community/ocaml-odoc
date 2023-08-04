@@ -17,16 +17,15 @@
 
 
 module Paths = Odoc_model.Paths
-module Ident_env = Odoc_model.Ident_env
 
 
+val read_interface :
+  Odoc_model.Paths.Identifier.ContainerPage.t option ->
+  string ->
+  Odoc_model.Compat.signature ->
+  Paths.Identifier.RootModule.t * Odoc_model.Lang.Signature.t
 
-val read_interface: Odoc_model.Root.t -> string -> Odoc_model.Compat.signature ->
-  Paths.Identifier.Module.t *
-  Odoc_model.Comment.docs *
-  Odoc_model.Lang.Signature.t
-
-#if OCAML_MAJOR = 4 && OCAML_MINOR = 02
+#if OCAML_VERSION < (4,3,0)
 val read_label : Asttypes.label -> Odoc_model.Lang.TypeExpr.label option
 #else
 val read_label : Asttypes.arg_label -> Odoc_model.Lang.TypeExpr.label option
@@ -63,12 +62,18 @@ val read_class_type : Ident_env.t ->
                       Odoc_model.Lang.Class.decl
 
 val read_module_type : Ident_env.t ->
-                       Paths.Identifier.Signature.t -> int ->
+                       Paths.Identifier.Signature.t ->
                        Odoc_model.Compat.module_type -> Odoc_model.Lang.ModuleType.expr
 
+val read_signature_noenv : Ident_env.t ->
+                       Paths.Identifier.Signature.t ->
+                       Odoc_model.Compat.signature ->
+                       (Odoc_model.Lang.Signature.t * Odoc_model.Lang.Include.shadowed)
+  
 val read_signature : Ident_env.t ->
                      Paths.Identifier.Signature.t ->
                      Odoc_model.Compat.signature -> Odoc_model.Lang.Signature.t
+
 
 val read_extension_constructor : Ident_env.t ->
                        Paths.Identifier.Signature.t ->
@@ -78,3 +83,5 @@ val read_extension_constructor : Ident_env.t ->
 val read_exception : Ident_env.t ->
   Paths.Identifier.Signature.t -> Ident.t ->
   Types.extension_constructor -> Odoc_model.Lang.Exception.t
+
+val read_location : Location.t -> Odoc_model.Location_.span

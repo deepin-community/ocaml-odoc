@@ -10,12 +10,9 @@ Copyright:
  Copyright (c) 2019 Jon Ludlam
 License: ISC
 
-Files: test/inactive/odoc/odoc_odoc.ml
-Copyright: Copyright (c) 2016 Daniel C. Bünzli
-License: ISC
-
 Files: debian/*
 Copyright: © 2020 Ralf Treinen <treinen@debian.org>
+           © 2022 Stéphane Glondu <glondu@debian.org>
 License: ISC
 
 License: ISC

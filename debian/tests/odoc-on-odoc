@@ -17,7 +17,7 @@ QUILT_PATCHES=debian/patches quilt push -a 2>&1
 if [ $? -eq 1 ]; then exit 1; fi
 set -e
 
-dune build @doc 2>&1
+dune build -p odoc @doc 2>&1
 
 nb_html=`find _build/default/_doc/_html/ -name "*.html" | wc -l`
 echo -n "Generated $nb_html HTML pages. "

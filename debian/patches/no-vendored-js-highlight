@@ -1,18 +1,28 @@
-Author: Ralf Treinen <treinen@debian.org>
-Description: removed vendored highlight js library.
-  Instead of using the content of the vendored js library, it uses
-  highlight.min.js from the libjs-highlight.js package
+From: Ralf Treinen <treinen@debian.org>
+Date: Sat, 25 Dec 2021 17:36:04 +0100
+Subject: removed vendored highlight js library.
 
+ Instead of using the content of the vendored js library, it uses
+ highlight.min.js from the libjs-highlight.js package
+---
+ src/odoc/dune             |  8 +++-----
+ src/odoc/support_files.ml | 15 +++++++++++++--
+ 2 files changed, 16 insertions(+), 7 deletions(-)
+
+diff --git a/src/odoc/dune b/src/odoc/dune
+index 5ca7d74..bd43529 100644
 --- a/src/odoc/dune
 +++ b/src/odoc/dune
-@@ -26,17 +26,16 @@
+@@ -23,14 +23,13 @@
  
  (rule
   (targets highlight_js.ml)
-- (deps (:js ../vendor/highlight.pack.js))
+- (deps
+-  (:js ../vendor/highlight.pack.js))
 +; (deps (:js ../vendor/highlight.pack.js))
   (action
-   (with-stdout-to %{targets}
+   (with-stdout-to
+    %{targets}
     (progn
      (echo "let content = {js|")
 -    (cat %{js})
@@ -20,18 +30,23 @@ Description: removed vendored highlight js library.
      (echo "|js}")))))
  
  ; Install theme files for odig.
- (install
+@@ -39,5 +38,4 @@
+  (package odoc)
   (section share)
   (files
 -  (etc/odoc.css as odoc-theme/default/odoc.css)
 -  (../vendor/highlight.pack.js as odoc-theme/default/highlight.pack.js)))
 +  (etc/odoc.css as odoc-theme/default/odoc.css)))
+diff --git a/src/odoc/support_files.ml b/src/odoc/support_files.ml
+index 504e23a..4384973 100644
 --- a/src/odoc/support_files.ml
 +++ b/src/odoc/support_files.ml
-@@ -7,10 +7,19 @@ let iter_files f ?(without_theme = false
+@@ -6,8 +6,19 @@ let iter_files f ?(without_theme = false) output_directory =
      f name content
    in
  
+-  if not without_theme then file "odoc.css" Css_file.content;
+-  file "highlight.pack.js" Highlight_js.content
 +  let highlight_js_content =
 +    let ic = open_in "/usr/share/javascript/highlight.js/highlight.min.js" in
 +    let n = in_channel_length ic in
@@ -41,11 +56,10 @@ Description: removed vendored highlight js library.
 +    (Bytes.unsafe_to_string s)
 +  in
 +
-   if not without_theme then begin
-     file "odoc.css" Css_file.content
-   end;
--  file "highlight.pack.js" Highlight_js.content
++  if not without_theme then begin
++    file "odoc.css" Css_file.content
++  end;
 +  file "highlight.pack.js" highlight_js_content
  
  let write =
-   iter_files begin fun name content ->
+   iter_files (fun name content ->

@@ -1,22 +1,35 @@
 open Result
+open Odoc_model
 
 val read_string :
-  Odoc_model.Paths.Identifier.LabelParent.t ->
-  Location.t ->
+  Paths.Identifier.LabelParent.t ->
   string ->
-    (Odoc_model.Comment.docs_or_stop, Odoc_model.Error.t) result
+  string ->
+  (Comment.docs_or_stop, Error.t) result Error.with_warnings
 
 val read_cmti :
-  make_root:(module_name:string -> digest:Digest.t -> Odoc_model.Root.t) ->
+  make_root:
+    (module_name:string ->
+    digest:Digest.t ->
+    (Odoc_model.Root.t, [ `Msg of string ]) result) ->
+  parent:Odoc_model.Paths.Identifier.ContainerPage.t option ->
   filename:string ->
-    (Odoc_model.Lang.Compilation_unit.t, Odoc_model.Error.t) result
+  (Lang.Compilation_unit.t, Error.t) result Error.with_warnings
 
 val read_cmt :
-  make_root:(module_name:string -> digest:Digest.t -> Odoc_model.Root.t) ->
+  make_root:
+    (module_name:string ->
+    digest:Digest.t ->
+    (Odoc_model.Root.t, [ `Msg of string ]) result) ->
+  parent:Odoc_model.Paths.Identifier.ContainerPage.t option ->
   filename:string ->
-    (Odoc_model.Lang.Compilation_unit.t, Odoc_model.Error.t) result
+  (Lang.Compilation_unit.t, Error.t) result Error.with_warnings
 
 val read_cmi :
-  make_root:(module_name:string -> digest:Digest.t -> Odoc_model.Root.t) ->
+  make_root:
+    (module_name:string ->
+    digest:Digest.t ->
+    (Odoc_model.Root.t, [ `Msg of string ]) result) ->
+  parent:Odoc_model.Paths.Identifier.ContainerPage.t option ->
   filename:string ->
-    (Odoc_model.Lang.Compilation_unit.t, Odoc_model.Error.t) result
+  (Lang.Compilation_unit.t, Error.t) result Error.with_warnings

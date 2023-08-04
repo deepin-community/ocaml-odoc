@@ -13,7 +13,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
- 
+
 (* Compatibility for older versions of OCaml *)
 
 (* This module contains a subset of the types in ocaml.git/typing/types.ml from
@@ -71,7 +71,7 @@ and modtype_declaration =
 
 let opt conv = function | None -> None | Some x -> Some (conv x)
 
-#if OCAML_MAJOR = 4 && OCAML_MINOR >= 10
+#if OCAML_VERSION >= (4,10,0)
 
 let rec signature : Types.signature -> signature = fun x -> List.map signature_item x
 
@@ -112,7 +112,7 @@ and modtype_declaration : Types.modtype_declaration -> modtype_declaration = fun
     mtd_attributes = x.Types.mtd_attributes;
     mtd_loc = x.Types.mtd_loc }
 
-#elif OCAML_MAJOR = 4 && OCAML_MINOR >= 08
+#elif OCAML_VERSION >= (4,8,0)
 
 let rec signature : Types.signature -> signature = fun x -> List.map signature_item x
 
@@ -153,7 +153,7 @@ and modtype_declaration : Types.modtype_declaration -> modtype_declaration = fun
     mtd_attributes = x.Types.mtd_attributes;
     mtd_loc = x.Types.mtd_loc }
 
-#elif OCAML_MAJOR = 4 && (OCAML_MINOR = 7 || OCAML_MINOR = 6 || OCAML_MINOR = 5 || OCAML_MINOR=4)
+#elif OCAML_VERSION >= (4,4,0) && OCAML_VERSION < (4,8,0)
 
   let rec module_type : Types.module_type -> module_type = function
   | Types.Mty_ident p -> Mty_ident p
@@ -178,17 +178,17 @@ and modtype_declaration : Types.modtype_declaration -> modtype_declaration = fun
 
   and signature : Types.signature -> signature = fun x -> List.map signature_item x
 
-  and module_declaration : Types.module_declaration -> module_declaration = fun x -> 
+  and module_declaration : Types.module_declaration -> module_declaration = fun x ->
     { md_type = module_type x.Types.md_type;
       md_attributes = x.Types.md_attributes;
       md_loc = x.Types.md_loc }
-  
+
   and modtype_declaration : Types.modtype_declaration -> modtype_declaration = fun x ->
     { mtd_type = opt module_type x.Types.mtd_type;
       mtd_attributes = x.Types.mtd_attributes;
       mtd_loc = x.Types.mtd_loc }
 
-#elif OCAML_MAJOR = 4 && (OCAML_MINOR = 2 || OCAML_MINOR = 3)
+#elif OCAML_VERSION >= (4,2,0) && OCAML_VERSION < (4,4,0)
 
   let rec module_type : Types.module_type -> module_type = function
   | Types.Mty_ident p -> Mty_ident p
@@ -211,11 +211,11 @@ and modtype_declaration : Types.modtype_declaration -> modtype_declaration = fun
 
   and signature : Types.signature -> signature = fun x -> List.map signature_item x
 
-  and module_declaration : Types.module_declaration -> module_declaration = fun x -> 
+  and module_declaration : Types.module_declaration -> module_declaration = fun x ->
     { md_type = module_type x.Types.md_type;
       md_attributes = x.Types.md_attributes;
       md_loc = x.Types.md_loc }
-  
+
   and modtype_declaration : Types.modtype_declaration -> modtype_declaration = fun x ->
     { mtd_type = opt module_type x.Types.mtd_type;
       mtd_attributes = x.Types.mtd_attributes;

@@ -3,9 +3,10 @@ Section: ocaml
 Priority: optional
 Maintainer: Debian OCaml Maintainers <debian-ocaml-maint@lists.debian.org>
 Uploaders: Ralf Treinen <treinen@debian.org>
-Build-Depends: debhelper-compat (= 13),
- dh-ocaml,
- ocaml-nox (>= 4.02.0),
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-ocaml (>= 1.2),
+ ocaml,
  cppo,
  ocaml-dune,
  libastring-ocaml-dev,
@@ -13,9 +14,13 @@ Build-Depends: debhelper-compat (= 13),
  libcmdliner-ocaml-dev,
  libresult-ocaml-dev,
  libtyxml-ocaml-dev (>= 4.3.0),
+ libodoc-parser-ocaml-dev,
+ libfmt-ocaml-dev,
+ libre-ocaml-dev,
+ libmigrate-parsetree-ocaml-dev,
  libjs-highlight.js
 Rules-Requires-Root: no
-Standards-Version: 4.5.1
+Standards-Version: 4.6.1
 Homepage: https://github.com/ocaml/odoc
 Vcs-Browser: https://salsa.debian.org/ocaml-team/ocaml-odoc
 Vcs-Git: https://salsa.debian.org/ocaml-team/ocaml-odoc.git
@@ -43,6 +48,7 @@ Package: libodoc-ocaml-dev
 Architecture: any
 Depends: ${misc:Depends}, ${ocaml:Depends}, ${shlibs:Depends}
 Provides: ${ocaml:Provides}
+Recommends: ocaml-findlib
 Description: documentation generator for OCaml (development libraries)
  Odoc is a documentation generator for the OCaml programming language.
  It reads doc comments contained in OCaml source code, delimited with

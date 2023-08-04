@@ -1,4 +1,5 @@
 open Or_error
+open Odoc_model.Names
 
 (*
  * Copyright (c) 2014 Leo White <leo@lpw25.net>
@@ -16,92 +17,218 @@ open Or_error
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+type parent_spec =
+  | Explicit of
+      Odoc_model.Paths.Identifier.ContainerPage.t
+      * Odoc_model.Paths.Reference.t list
+  | Package of Odoc_model.Paths.Identifier.ContainerPage.t
+  | Noparent
 
+type parent_cli_spec =
+  | CliParent of string
+  | CliPackage of string
+  | CliNoparent
 
-let resolve_and_substitute ~env ~output ~warn_error input_file read_file =
-  Odoc_model.Error.set_warn_error warn_error;
+(** Parse parent and child references. May print warnings. *)
+let parse_reference f =
+  let open Odoc_model in
+  (* This is a command-line error. *)
+  let warnings_options = { Error.warn_error = true; print_warnings = true } in
+  Semantics.parse_reference f
+  |> Error.handle_errors_and_warnings ~warnings_options
+
+let parent resolver parent_cli_spec =
+  let find_parent :
+      Odoc_model.Paths.Reference.t ->
+      (Odoc_model.Lang.Page.t, [> `Msg of string ]) Result.result =
+   fun r ->
+    match r with
+    | `Root (p, `TPage) | `Root (p, `TUnknown) -> (
+        match Resolver.lookup_page resolver p with
+        | Some r -> Ok r
+        | None -> Error (`Msg "Couldn't find specified parent page"))
+    | _ -> Error (`Msg "Expecting page as parent")
+  in
+  let extract_parent = function
+    | `Page _ as container -> Ok container
+    | _ -> Error (`Msg "Specified parent is not a parent of this file")
+  in
+  match parent_cli_spec with
+  | CliParent f ->
+      parse_reference f >>= fun r ->
+      find_parent r >>= fun page ->
+      extract_parent page.name >>= fun parent ->
+      Ok (Explicit (parent, page.children))
+  | CliPackage package -> Ok (Package (`Page (None, PageName.make_std package)))
+  | CliNoparent -> Ok Noparent
+
+let resolve_imports resolver imports =
+  let open Odoc_model in
+  List.map
+    (function
+      | Lang.Compilation_unit.Import.Resolved _ as resolved -> resolved
+      | Unresolved (name, _) as unresolved -> (
+          match Resolver.resolve_import resolver name with
+          | Some root -> Resolved (root, Names.ModuleName.make_std name)
+          | None -> unresolved))
+    imports
+
+(** Raises warnings and errors. *)
+let resolve_and_substitute ~resolver
+    (parent : Odoc_model.Paths.Identifier.ContainerPage.t option) input_file
+    read_file =
   let filename = Fs.File.to_string input_file in
-  match read_file ~filename:filename with
-  | Error e -> Error (`Msg (Odoc_model.Error.to_string e))
-  | Ok unit ->
-    let unit = Odoc_xref.Lookup.lookup unit in
-    if not unit.Odoc_model.Lang.Compilation_unit.interface then (
-      Printf.eprintf "WARNING: not processing the \"interface\" file.%s\n%!"
-        (if not (Filename.check_suffix filename "cmt") then "" (* ? *)
-         else
-          Printf.sprintf
-            " Using %S while you should use the .cmti file" filename)
-    );
-    let resolve_env = Env.build env (`Unit unit) in
-    Odoc_xref.resolve (Env.resolver resolve_env) unit >>= fun resolved ->
-    (* [expand unit] fetches [unit] from [env] to get the expansion of local, previously
-       defined, elements. We'd rather it got back the resolved bit so we rebuild an
-       environment with the resolved unit.
-       Note that this is bad and once rewritten expand should not fetch the unit it is
-       working on. *)
-    let expand_env = Env.build env (`Unit resolved) in
-    Odoc_xref.expand (Env.expander expand_env) resolved >>= fun expanded ->
-    Compilation_unit.save output expanded;
-    Ok ()
+  let unit =
+    read_file ~parent ~filename |> Odoc_model.Error.raise_errors_and_warnings
+  in
+  if not unit.Odoc_model.Lang.Compilation_unit.interface then
+    Printf.eprintf "WARNING: not processing the \"interface\" file.%s\n%!"
+      (if not (Filename.check_suffix filename "cmt") then "" (* ? *)
+      else
+        Printf.sprintf " Using %S while you should use the .cmti file" filename);
+  (* Resolve imports, used by the [link-deps] command. *)
+  let unit = { unit with imports = resolve_imports resolver unit.imports } in
+  let env = Resolver.build_env_for_unit resolver ~linking:false unit in
+  let compiled =
+    Odoc_xref2.Compile.compile ~filename env unit
+    |> Odoc_model.Error.raise_warnings
+  in
+  (* [expand unit] fetches [unit] from [env] to get the expansion of local, previously
+     defined, elements. We'd rather it got back the resolved bit so we rebuild an
+     environment with the resolved unit.
+     Note that this is bad and once rewritten expand should not fetch the unit it is
+     working on. *)
+  (*    let expand_env = Env.build env (`Unit resolved) in*)
+  (*    let expanded = Odoc_xref2.Expand.expand (Env.expander expand_env) resolved in *)
+  compiled
 
-let root_of_compilation_unit ~package ~hidden ~module_name ~digest =
-  let file_representation : Odoc_model.Root.Odoc_file.t =
-    Odoc_model.Root.Odoc_file.create_unit ~force_hidden:hidden module_name in
-  {Odoc_model.Root.package; file = file_representation; digest}
+let root_of_compilation_unit ~parent_spec ~hidden ~output ~module_name ~digest =
+  let open Odoc_model.Root in
+  let filename =
+    Filename.chop_extension Fs.File.(to_string @@ basename output)
+  in
+  let result parent =
+    let file = Odoc_file.create_unit ~force_hidden:hidden module_name in
+    Ok { id = `Root (parent, ModuleName.make_std module_name); file; digest }
+  in
+  let check_child : Odoc_model.Paths.Reference.t -> bool =
+   fun c ->
+    match c with
+    | `Root (n, `TUnknown) | `Root (n, `TModule) ->
+        Astring.String.Ascii.(uncapitalize n = uncapitalize filename)
+    | _ -> false
+  in
+  match parent_spec with
+  | Noparent -> result None
+  | Explicit (parent, children) ->
+      if List.exists check_child children then result (Some parent)
+      else Error (`Msg "Specified parent is not a parent of this file")
+  | Package parent -> result (Some parent)
 
-let cmti ~env ~package ~hidden ~output ~warn_error input =
-  let make_root = root_of_compilation_unit ~package ~hidden in
-  let read_file = Odoc_loader.read_cmti ~make_root in
-  resolve_and_substitute ~env ~output ~warn_error input read_file
-
-let cmt ~env ~package ~hidden ~output ~warn_error input =
-  let make_root = root_of_compilation_unit ~package ~hidden in
-  let read_file = Odoc_loader.read_cmt ~make_root in
-  resolve_and_substitute ~env ~output ~warn_error input read_file
-
-let cmi ~env ~package ~hidden ~output ~warn_error input =
-  let make_root = root_of_compilation_unit ~package ~hidden in
-  let read_file = Odoc_loader.read_cmi ~make_root in
-  resolve_and_substitute ~env ~output ~warn_error input read_file
-
-(* TODO: move most of this to doc-ock. *)
-let mld ~env ~package ~output ~warn_error input =
-  Odoc_model.Error.set_warn_error warn_error;
+let mld ~parent_spec ~output ~children ~warnings_options input =
+  List.fold_left
+    (fun acc child_str ->
+      match (acc, parse_reference child_str) with
+      | Ok acc, Ok r -> Ok (r :: acc)
+      | Error m, _ -> Error m
+      | _, Error (`Msg m) ->
+          Error (`Msg ("Failed to parse child reference: " ^ m))
+      | _, Error _ -> Error (`Msg "Unknown failure parsing child reference"))
+    (Ok []) children
+  >>= fun children ->
   let root_name =
     let page_dash_root =
-      Filename.chop_extension (Fs.File.(to_string @@ basename output))
+      Filename.chop_extension Fs.File.(to_string @@ basename output)
     in
     String.sub page_dash_root (String.length "page-")
       (String.length page_dash_root - String.length "page-")
   in
-  let digest = Digest.file (Fs.File.to_string input) in
+  let input_s = Fs.File.to_string input in
+  let digest = Digest.file input_s in
+  let page_name = PageName.make_std root_name in
+  let check_child : Odoc_model.Paths.Reference.t -> bool =
+   fun c ->
+    match c with
+    | `Root (n, `TUnknown) | `Root (n, `TPage) -> root_name = n
+    | _ -> false
+  in
+  let _ =
+    match (parent_spec, root_name) with
+    | Explicit _, "index" ->
+        Format.eprintf
+          "Warning: Potential name clash - child page named 'index'\n%!"
+    | _ -> ()
+  in
+  let name =
+    let check parents_children v =
+      if List.exists check_child parents_children then Ok v
+      else Error (`Msg "Specified parent is not a parent of this file")
+    in
+    match (parent_spec, children) with
+    | Explicit (p, cs), [] -> check cs @@ `LeafPage (Some p, page_name)
+    | Explicit (p, cs), _ -> check cs @@ `Page (Some p, page_name)
+    | Package parent, [] -> Ok (`LeafPage (Some parent, page_name))
+    | Package parent, _ ->
+        Ok (`Page (Some parent, page_name)) (* This is a bit odd *)
+    | Noparent, [] -> Ok (`LeafPage (None, page_name))
+    | Noparent, _ -> Ok (`Page (None, page_name))
+  in
+  name >>= fun name ->
   let root =
     let file = Odoc_model.Root.Odoc_file.create_page root_name in
-    {Odoc_model.Root.package; file; digest}
-  in
-  let name = `Page (root, Odoc_model.Names.PageName.of_string root_name) in
-  let location =
-    let pos =
-      Lexing.{
-        pos_fname = Fs.File.to_string input;
-        pos_lnum = 0;
-        pos_cnum = 0;
-        pos_bol = 0
-      }
-    in
-    Location.{ loc_start = pos; loc_end = pos; loc_ghost = true }
+    {
+      Odoc_model.Root.id = (name :> Odoc_model.Paths.Identifier.OdocId.t);
+      file;
+      digest;
+    }
   in
   let resolve content =
-    (* This is a mess. *)
-    let page = Odoc_model.Lang.Page.{ name; content; digest } in
-    let page = Odoc_xref.Lookup.lookup_page page in
-    let env = Env.build env (`Page page) in
-    Odoc_xref.resolve_page (Env.resolver env) page >>= fun resolved ->
-    Page.save output resolved;
+    let page =
+      Odoc_model.Lang.Page.
+        { name; root; children; content; digest; linked = false }
+    in
+    Odoc_file.save_page output ~warnings:[] page;
     Ok ()
   in
   Fs.File.read input >>= fun str ->
-  match Odoc_loader.read_string name location str with
-  | Error e -> Error (`Msg (Odoc_model.Error.to_string e))
-  | Ok `Stop -> resolve [] (* TODO: Error? *)
-  | Ok (`Docs content) -> resolve content
+  Odoc_loader.read_string
+    (name :> Odoc_model.Paths.Identifier.LabelParent.t)
+    input_s str
+  |> Odoc_model.Error.handle_errors_and_warnings ~warnings_options
+  >>= function
+  | `Stop -> resolve [] (* TODO: Error? *)
+  | `Docs content -> resolve content
+
+let compile ~resolver ~parent_cli_spec ~hidden ~children ~output
+    ~warnings_options input =
+  parent resolver parent_cli_spec >>= fun parent_spec ->
+  let ext = Fs.File.get_ext input in
+  if ext = ".mld" then
+    mld ~parent_spec ~output ~warnings_options ~children input
+  else
+    (match ext with
+    | ".cmti" -> Ok Odoc_loader.read_cmti
+    | ".cmt" -> Ok Odoc_loader.read_cmt
+    | ".cmi" -> Ok Odoc_loader.read_cmi
+    | _ ->
+        Error
+          (`Msg "Unknown extension, expected one of: cmti, cmt, cmi or mld."))
+    >>= fun loader ->
+    let parent =
+      match parent_spec with
+      | Noparent -> Ok None
+      | Explicit (parent, _) -> Ok (Some parent)
+      | Package parent -> Ok (Some parent)
+    in
+    parent >>= fun parent ->
+    let make_root = root_of_compilation_unit ~parent_spec ~hidden ~output in
+    let result =
+      Odoc_model.Error.catch_errors_and_warnings (fun () ->
+          resolve_and_substitute ~resolver parent input (loader ~make_root))
+    in
+    (* Extract warnings to write them into the output file *)
+    let _, warnings = Odoc_model.Error.unpack_warnings result in
+    Odoc_model.Error.handle_errors_and_warnings ~warnings_options result
+    >>= fun unit ->
+    Odoc_file.save_unit output ~warnings unit;
+    Ok ()
