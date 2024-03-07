@@ -111,9 +111,9 @@ let elt_size (x : elt) =
   | List _ | Section _ | Verbatim _ | Raw _ | Code_block _ | Indented _
   | Description _ ->
       Large
-  | Table _ -> Huge
+  | Table _ | Layout_table _ -> Huge
 
-let table = function
+let layout_table = function
   | [] -> []
   | a :: _ as m ->
       let start = List.map (fun _ -> Empty) a in
@@ -128,7 +128,7 @@ let table = function
       in
       let filter_row row = filter_map filter_empty @@ List.combine mask row in
       let row_size = List.fold_left max Empty mask in
-      [ Table { row_size; tbl = List.map filter_row m } ]
+      [ Layout_table { row_size; tbl = List.map filter_row m } ]
 
 let txt ~verbatim ~in_source ws =
   if verbatim then [ Txt ws ]
@@ -169,10 +169,11 @@ let rec pp_elt ppf = function
   | Code_fragment x -> Raw.code_fragment pp ppf x
   | List { typ; items } -> list typ pp ppf items
   | Description items -> Raw.description pp ppf items
-  | Table { row_size = Large | Huge; tbl } -> large_table ppf tbl
-  | Table { row_size = Small | Empty; tbl } ->
+  | Table { align; data } -> Raw.small_table pp ppf (Some align, data)
+  | Layout_table { row_size = Large | Huge; tbl } -> large_table ppf tbl
+  | Layout_table { row_size = Small | Empty; tbl } ->
       if List.length tbl <= small_table_height_limit then
-        Raw.small_table pp ppf tbl
+        Raw.small_table pp ppf (None, tbl)
       else large_table ppf tbl
   | Label x -> Raw.label ppf x
   | Indented x -> Raw.indent pp ppf x
@@ -181,8 +182,8 @@ let rec pp_elt ppf = function
 
 and pp ppf = function
   | [] -> ()
-  | Break _ :: (Table _ :: _ as q) -> pp ppf q
-  | (Table _ as t) :: Break _ :: q -> pp ppf (t :: q)
+  | Break _ :: ((Layout_table _ | Table _) :: _ as q) -> pp ppf q
+  | ((Layout_table _ | Table _) as t) :: Break _ :: q -> pp ppf (t :: q)
   | Break a :: Break b :: q -> pp ppf (Break (max a b) :: q)
   | Ligaturable "-" :: Ligaturable ">" :: q ->
       Raw.rightarrow ppf;
@@ -231,17 +232,14 @@ let source k (t : Source.t) =
   tokens t
 
 let rec internalref ~verbatim ~in_source (t : InternalLink.t) =
-  match t with
-  | Resolved (uri, content) ->
-      let target = Link.label uri in
-      let text = Some (inline ~verbatim ~in_source content) in
-      let short = in_source in
-      Internal_ref { short; text; target }
-  | Unresolved content ->
-      let target = "xref-unresolved" in
-      let text = Some (inline ~verbatim ~in_source content) in
-      let short = in_source in
-      Internal_ref { short; target; text }
+  let target =
+    match t.target with
+    | InternalLink.Resolved uri -> Link.label uri
+    | Unresolved -> "xref-unresolved"
+  in
+  let text = Some (inline ~verbatim ~in_source t.content) in
+  let short = in_source in
+  Internal_ref { short; target; text }
 
 and inline ~in_source ~verbatim (l : Inline.t) =
   let one (t : Inline.one) =
@@ -255,6 +253,7 @@ and inline ~in_source ~verbatim (l : Inline.t) =
     | InternalLink c -> [ internalref ~in_source ~verbatim c ]
     | Source c ->
         [ Inlined_code (source (inline ~verbatim:false ~in_source:true) c) ]
+    | Math s -> [ Raw (Format.asprintf "%a" Raw.math s) ]
     | Raw_markup r -> raw_markup r
     | Entity s -> [ entity ~in_source ~verbatim s ]
   in
@@ -298,6 +297,7 @@ let rec block ~in_source (l : Block.t) =
         @ if in_source then [] else [ Break Paragraph ]
     | List (typ, l) ->
         [ List { typ; items = List.map (block ~in_source:false) l } ]
+    | Table t -> table_block t
     | Description l ->
         [
           (let item i =
@@ -308,9 +308,27 @@ let rec block ~in_source (l : Block.t) =
         ]
     | Raw_markup r -> raw_markup r
     | Verbatim s -> [ Verbatim s ]
-    | Source c -> non_empty_block_code c
+    | Source (_, c) -> non_empty_block_code c
+    | Math s ->
+        [
+          Break Paragraph;
+          Raw (Format.asprintf "%a" Raw.equation s);
+          Break Paragraph;
+        ]
   in
   list_concat_map l ~f:one
+
+and table_block { Table.data; align } =
+  let data =
+    List.map
+      (List.map (fun (cell, cell_type) ->
+           let content = block ~in_source:false cell in
+           match cell_type with
+           | `Header -> [ Style (`Bold, content) ]
+           | `Data -> content))
+      data
+  in
+  [ Table { align; data } ]
 
 let rec is_only_text l =
   let is_text : Item.t -> _ = function
@@ -335,7 +353,7 @@ let rec documentedSrc (t : DocumentedSrc.t) =
         non_empty_code_fragment code @ to_latex rest
     | Alternative (Expansion e) :: rest ->
         (if Link.should_inline e.status e.url then to_latex e.expansion
-        else non_empty_code_fragment e.summary)
+         else non_empty_code_fragment e.summary)
         @ to_latex rest
     | Subpage subp :: rest ->
         Indented (items subp.content.items) :: to_latex rest
@@ -376,7 +394,7 @@ let rec documentedSrc (t : DocumentedSrc.t) =
           let doc = [ block ~in_source:true dsrc.doc ] in
           (content @ label dsrc.anchor) :: doc
         in
-        table (List.map one l) @ to_latex rest
+        layout_table (List.map one l) @ to_latex rest
   in
   to_latex t
 
@@ -398,14 +416,21 @@ and items l =
         elts |> continue_with rest
     | Heading h :: rest -> heading h |> continue_with rest
     | Include
-        { attr = _; anchor; doc; content = { summary; status = _; content } }
+        {
+          attr = _;
+          source_anchor = _;
+          anchor;
+          doc;
+          content = { summary; status = _; content };
+        }
       :: rest ->
         let included = items content in
         let docs = block ~in_source:true doc in
         let summary = source (inline ~verbatim:false ~in_source:true) summary in
         let content = included in
         label anchor @ docs @ summary @ content |> continue_with rest
-    | Declaration { Item.attr = _; anchor; content; doc } :: rest ->
+    | Declaration { Item.attr = _; source_anchor = _; anchor; content; doc }
+      :: rest ->
         let content = label anchor @ documentedSrc content in
         let elts =
           match doc with
@@ -452,17 +477,16 @@ module Page = struct
     List.flatten @@ List.map (subpage ~with_children) subpages
 
   and page ~with_children p =
-    let { Page.title = _; header; items = i; url } =
-      Doctree.Labels.disambiguate_page p
+    let { Page.preamble; items = i; url; _ } =
+      Doctree.Labels.disambiguate_page ~enter_subpages:true p
     and subpages = subpages ~with_children @@ Doctree.Subpages.compute p in
     let i = Doctree.Shift.compute ~on_sub i in
-    let header = items header in
+    let header = items (Doctree.PageTitle.render_title p @ preamble) in
     let content = items i in
     let page = Doc.make ~with_children url (header @ content) subpages in
     page
 end
 
-let render ~with_children page = Page.page ~with_children page
-
-let files_of_url url =
-  if Link.is_class_or_module_path url then [ Link.filename url ] else []
+let render ~with_children = function
+  | Document.Page page -> [ Page.page ~with_children page ]
+  | Source_page _ | Asset _ -> []

@@ -34,8 +34,8 @@ let cmt_of_string s =
     let p = Parse.implementation l in
     Typemod.type_implementation "" "" "" env p
 
-let parent = `Page (None, Odoc_model.Names.PageName.make_std "None")
-let id = `Root (Some parent, Odoc_model.Names.ModuleName.make_std "Root")
+let parent = Odoc_model.Paths.Identifier.Mk.page (None, Odoc_model.Names.PageName.make_std "None")
+let id = Odoc_model.Paths.Identifier.Mk.root (Some parent, Odoc_model.Names.ModuleName.make_std "Root")
 
 let root_of_compilation_unit ~package ~hidden ~module_name ~digest =
   ignore(package);
@@ -57,7 +57,7 @@ let root =
 
 let root_identifier = `Identifier id
 
-let root_module name = `Module (id, Odoc_model.Names.ModuleName.make_std name)
+let root_module name = Odoc_model.Paths.Identifier.Mk.module_ (id, Odoc_model.Names.ModuleName.make_std name)
 
 let root_pp fmt (_ : Odoc_model.Root.t) = Format.fprintf fmt "Common.root"
 
@@ -399,7 +399,7 @@ module LangUtils = struct
                 let rec inner = function
                     | Odoc_model.Lang.Signature.Module (_, m) :: rest -> begin
                         let id = m.Odoc_model.Lang.Module.id in
-                        match id with
+                        match id.iv with
                         | `Module (_, mname') ->
                             if Odoc_model.Names.ModuleName.to_string mname' = mname
                             then m
@@ -426,7 +426,7 @@ module LangUtils = struct
         type 'a fmt = Format.formatter -> 'a -> unit
 
         open Paths
-        val identifier : [< Identifier.t] fmt
+        val identifier : [< Identifier.t_pv] Paths.Identifier.id fmt
 
         open Lang
 
@@ -558,17 +558,20 @@ module LangUtils = struct
             match p with
             | `Apply (p1, p2) -> Format.fprintf ppf "%a(%a)" resolved_path (cast p1) resolved_path (cast p2)
             | `Identifier p -> Format.fprintf ppf "global(%a)" identifier p
-            | `Alias (path, realpath) -> Format.fprintf ppf "(%a -> %a)" resolved_path (cast path) resolved_path (cast realpath)
+            | `Alias (dest, src) -> Format.fprintf ppf "(%a -> %a)" path (src :> Odoc_model.Paths.Path.t) resolved_path (cast dest)
             | `AliasModuleType (path, realpath) -> Format.fprintf ppf "(%a -> %a)" resolved_path (cast path) resolved_path (cast realpath)
             | `Subst (modty, m) -> Format.fprintf ppf "(%a subst-> %a)" resolved_path (cast modty) resolved_path (cast m)
             | `Module (p, m) -> Format.fprintf ppf "%a.%s" resolved_path (cast p) (Odoc_model.Names.ModuleName.to_string m)
             | `ModuleType (p, mt) -> Format.fprintf ppf "%a.%s" resolved_path (cast p) (Odoc_model.Names.ModuleTypeName.to_string mt)
             | `Type (p, t) -> Format.fprintf ppf "%a.%s" resolved_path (cast p) (Odoc_model.Names.TypeName.to_string t)
+            | `Value (p, t) -> Format.fprintf ppf "%a.%s" resolved_path (cast p) (Odoc_model.Names.ValueName.to_string t)
+            | `Constructor (p, t) -> Format.fprintf ppf "%a.%s" resolved_path (cast p) (Odoc_model.Names.ConstructorName.to_string t)
             | `OpaqueModule m -> Format.fprintf ppf "opaquemodule(%a)" resolved_path (cast m)
             | `OpaqueModuleType m -> Format.fprintf ppf "opaquemoduletype(%a)" resolved_path (cast m)
             | `SubstT (_, _)
             | `CanonicalModuleType (_, _)
             | `CanonicalType (_, _)
+            | `CanonicalDataType (_, _)
             | `Class (_, _)
             | `ClassType (_, _)
             | `Hidden _
@@ -602,7 +605,7 @@ module LangUtils = struct
 
 end
 
-let my_compilation_unit id s =
+let my_compilation_unit id (s : Odoc_model.Lang.Signature.t) =
     { Odoc_model.Lang.Compilation_unit.
       id = id
     ; root = root
@@ -615,6 +618,8 @@ let my_compilation_unit id s =
     ; expansion = None
     ; linked = false
     ; canonical = None
+    ; source_info = None
+    ; shape_info = None
 }
 
 let mkresolver () =
@@ -638,7 +643,7 @@ let handle_warnings ww =
 
 let resolve unit =
   let resolver = mkresolver () in
-  let resolve_env = Odoc_odoc.Resolver.build_env_for_unit resolver ~linking:true unit in
+  let resolve_env = Odoc_odoc.Resolver.build_compile_env_for_unit resolver unit in
   Odoc_xref2.Compile.compile ~filename:"<test>" resolve_env unit
   |> handle_warnings
 

@@ -82,6 +82,13 @@ let filter_in_sig sg f =
   in
   inner f sg.Signature.items
 
+(** Returns the last element of a list. Used to implement [_unambiguous]
+    functions. *)
+let rec disambiguate = function
+  | [ x ] -> Some x
+  | [] -> None
+  | _ :: tl -> disambiguate tl
+
 let module_in_sig sg name =
   find_in_sig sg (function
     | Signature.Module (id, _, m) when N.module_ id = name ->
@@ -104,12 +111,10 @@ let type_in_sig sg name =
         Some (`FClassType (N.class_type' id, c))
     | _ -> None)
 
-let class_in_sig sg name =
+let datatype_in_sig sg name =
   find_in_sig sg (function
-    | Signature.Class (id, _, c) when N.class_ id = name ->
-        Some (`FClass (N.class' id, c))
-    | Signature.ClassType (id, _, c) when N.class_type id = name ->
-        Some (`FClassType (N.class_type' id, c))
+    | Signature.Type (id, _, m) when N.type_ id = name ->
+        Some (`FType (N.type' id, Delayed.get m))
     | _ -> None)
 
 type removed_type =
@@ -121,6 +126,8 @@ type careful_module_type =
   [ module_type | `FModuleType_removed of ModuleType.expr ]
 
 type careful_type = [ type_ | removed_type ]
+
+type careful_datatype = [ datatype | removed_type ]
 
 type careful_class = [ class_ | removed_type ]
 
@@ -157,16 +164,10 @@ let careful_type_in_sig sg name =
   | Some _ as x -> x
   | None -> removed_type_in_sig sg name
 
-let careful_class_in_sig sg name =
-  match class_in_sig sg name with
+let careful_datatype_in_sig sg name =
+  match datatype_in_sig sg name with
   | Some _ as x -> x
   | None -> removed_type_in_sig sg name
-
-let datatype_in_sig sg name =
-  find_in_sig sg (function
-    | Signature.Type (id, _, t) when N.type_ id = name ->
-        Some (`FType (N.type' id, Component.Delayed.get t))
-    | _ -> None)
 
 let class_in_sig sg name =
   filter_in_sig sg (function
@@ -175,6 +176,25 @@ let class_in_sig sg name =
     | Signature.ClassType (id, _, c) when N.class_type id = name ->
         Some (`FClassType (N.class_type' id, c))
     | _ -> None)
+
+let class_in_sig_unambiguous sg name = disambiguate (class_in_sig sg name)
+
+let careful_class_in_sig sg name =
+  match class_in_sig_unambiguous sg name with
+  | Some _ as x -> x
+  | None -> removed_type_in_sig sg name
+
+let constructor_in_type (typ : TypeDecl.t) name =
+  let rec find_cons = function
+    | ({ TypeDecl.Constructor.name = name'; _ } as cons) :: _ when name' = name
+      ->
+        Some (`FConstructor cons)
+    | _ :: tl -> find_cons tl
+    | [] -> None
+  in
+  match typ.representation with
+  | Some (Variant cons) -> find_cons cons
+  | Some (Record _) | Some Extensible | None -> None
 
 let any_in_type (typ : TypeDecl.t) name =
   let rec find_cons = function
@@ -265,6 +285,8 @@ let value_in_sig sg name =
         Some (`FValue (N.typed_value id, Delayed.get m))
     | _ -> None)
 
+let value_in_sig_unambiguous sg name = disambiguate (value_in_sig sg name)
+
 let label_in_sig sg name =
   filter_in_sig sg (function
     | Signature.Comment (`Docs d) -> any_in_comment d name
@@ -311,7 +333,7 @@ let any_in_type_in_sig sg name =
 
 let filter_in_class_signature cs f =
   let rec inner = function
-    | ClassSignature.Inherit ct_expr :: tl -> inner_inherit ct_expr @ inner tl
+    | ClassSignature.Inherit { expr; _ } :: tl -> inner_inherit expr @ inner tl
     | it :: tl -> (
         match f it with Some x -> x :: inner tl | None -> inner tl)
     | [] -> []

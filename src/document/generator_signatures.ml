@@ -102,7 +102,20 @@ module type SYNTAX = sig
 end
 
 module type GENERATOR = sig
-  val compilation_unit : Lang.Compilation_unit.t -> Page.t
+  val compilation_unit : Lang.Compilation_unit.t -> Document.t
 
-  val page : Lang.Page.t -> Page.t
+  val page : Lang.Page.t -> Document.t
+
+  val source_tree : Lang.SourceTree.t -> Document.t list
+
+  val source_page :
+    Odoc_model.Paths.Identifier.SourcePage.t ->
+    Syntax_highlighter.infos ->
+    Lang.Source_info.infos ->
+    string ->
+    Document.t
+
+  val type_expr : ?needs_parentheses:bool -> Lang.TypeExpr.t -> text
+
+  val record : Lang.TypeDecl.Field.t list -> DocumentedSrc.one list
 end

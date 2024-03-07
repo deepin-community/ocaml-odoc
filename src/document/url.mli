@@ -17,10 +17,11 @@ module Path : sig
     | `Page
     | `LeafPage
     | `ModuleType
-    | `Argument
+    | `Parameter of int
     | `Class
     | `ClassType
-    | `File ]
+    | `File
+    | `SourcePage ]
 
   val pp_kind : Format.formatter -> kind -> unit
 
@@ -28,10 +29,17 @@ module Path : sig
 
   type t = { kind : kind; parent : t option; name : string }
 
-  type source =
-    [ Identifier.Page.t | Identifier.Signature.t | Identifier.ClassSignature.t ]
+  type any_pv =
+    [ Identifier.Page.t_pv
+    | Identifier.Signature.t_pv
+    | Identifier.ClassSignature.t_pv
+    | Identifier.SourcePage.t_pv
+    | Identifier.SourceDir.t_pv
+    | Identifier.AssetFile.t_pv ]
 
-  val from_identifier : [< source ] -> t
+  and any = any_pv Odoc_model.Paths.Identifier.id
+
+  val from_identifier : [< any_pv ] Odoc_model.Paths.Identifier.id -> t
 
   val to_list : t -> (kind * string) list
 
@@ -63,7 +71,8 @@ module Anchor : sig
     | `Method
     | `Val
     | `Constructor
-    | `Field ]
+    | `Field
+    | `SourceAnchor ]
 
   val pp_kind : Format.formatter -> kind -> unit
 
@@ -88,6 +97,8 @@ module Anchor : sig
   val extension_decl : Odoc_model.Lang.Extension.t -> t
   (** Anchor for the extension declaration item itself, which doesn't have an
       identifier in the model. *)
+
+  val source_anchor : Path.t -> string -> t
 end
 
 type kind = Anchor.kind

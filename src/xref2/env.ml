@@ -5,14 +5,13 @@ open Odoc_model.Paths
 
 type lookup_unit_result =
   | Forward_reference
-  | Found of Odoc_model.Lang.Compilation_unit.t
+  | Found of Lang.Compilation_unit.t
   | Not_found
 
-type lookup_page_result = Odoc_model.Lang.Page.t option
+type lookup_page_result = Lang.Page.t option
 
 type root =
-  | Resolved of
-      (Root.t * Odoc_model.Paths.Identifier.Module.t * Component.Module.t)
+  | Resolved of (Odoc_model.Root.t * Identifier.Module.t * Component.Module.t)
   | Forward
 
 type resolver = {
@@ -28,10 +27,10 @@ let unique_id =
     !i
 
 type lookup_type =
-  | Module of Odoc_model.Paths.Identifier.Path.Module.t
-  | ModuleType of Odoc_model.Paths.Identifier.Path.ModuleType.t
+  | Module of Paths.Identifier.Path.Module.t
+  | ModuleType of Paths.Identifier.Path.ModuleType.t
   | RootModule of string * [ `Forward | `Resolved of Digest.t ] option
-  | ModuleByName of string * Odoc_model.Paths.Identifier.Path.Module.t
+  | ModuleByName of string * Paths.Identifier.Path.Module.t
   | FragmentRoot of int
 
 let pp_lookup_type fmt =
@@ -69,7 +68,7 @@ end)
 
 type recorder = { mutable lookups : LookupTypeSet.t }
 
-module Maps = Odoc_model.Paths.Identifier.Maps
+module Maps = Paths.Identifier.Maps
 module StringMap = Map.Make (String)
 
 (** Used only to handle shadowing, see {!Elements}. *)
@@ -93,8 +92,6 @@ module ElementsByName : sig
 
   val add : kind -> string -> [< Component.Element.any ] -> t -> t
 
-  val remove : [< Identifier.t ] -> t -> t
-
   val find_by_name :
     (Component.Element.any -> 'b option) -> string -> t -> 'b list
 end = struct
@@ -116,19 +113,6 @@ end = struct
     in
     StringMap.add name ({ kind; elem } :: tl) t
 
-  let remove id t =
-    let id = (id :> Identifier.t) in
-    let name = Identifier.name id in
-    let l = StringMap.find name t in
-    match
-      List.filter
-        (fun e ->
-          not (Identifier.equal id (Component.Element.identifier e.elem)))
-        l
-    with
-    | [] -> StringMap.remove name t
-    | xs -> StringMap.add name xs (StringMap.remove name t)
-
   let find_by_name f name t =
     let filter e acc = match f e.elem with Some r -> r :: acc | None -> acc in
     try List.fold_right filter (StringMap.find name t) [] with Not_found -> []
@@ -139,11 +123,16 @@ module ElementsById : sig
 
   val empty : t
 
-  val add : [< Identifier.t ] -> [< Component.Element.any ] -> t -> t
+  val add :
+    [< Identifier.t_pv ] Paths.Identifier.id ->
+    [< Component.Element.any ] ->
+    t ->
+    t
 
-  val remove : [< Identifier.t ] -> t -> t
-
-  val find_by_id : [< Identifier.t ] -> t -> Component.Element.any option
+  val find_by_id :
+    [< Identifier.t_pv ] Paths.Identifier.id ->
+    t ->
+    Component.Element.any option
 end = struct
   module IdMap = Identifier.Maps.Any
 
@@ -154,10 +143,6 @@ end = struct
   let add identifier element t =
     IdMap.add (identifier :> Identifier.t) (element :> Component.Element.any) t
 
-  let remove id t =
-    let id = (id :> Identifier.t) in
-    IdMap.remove id t
-
   let find_by_id identifier t =
     try Some (IdMap.find (identifier :> Identifier.t) t)
     with Not_found -> None
@@ -167,8 +152,8 @@ type 'a amb_err = [ `Ambiguous of 'a * 'a list ]
 
 type t = {
   linking : bool;
-  (* True if this is a linking environment - if not,
-     we only put in modules, module types, types, classes and class types *)
+  (* True if this is a linking environment - if not, we only put in modules,
+     module types, types, classes and class types *)
   id : int;
   elts : ElementsByName.t;
       (** Elements mapped by their name. Queried with {!find_by_name}. *)
@@ -179,6 +164,8 @@ type t = {
   recorder : recorder option;
   fragmentroot : (int * Component.Signature.t) option;
 }
+
+let is_linking env = env.linking
 
 let set_resolver t resolver = { t with resolver = Some resolver }
 
@@ -240,14 +227,6 @@ let add_to_elts kind identifier component env =
     ids = ElementsById.add identifier component env.ids;
   }
 
-let remove identifier env =
-  {
-    env with
-    id = unique_id ();
-    elts = ElementsByName.remove identifier env.elts;
-    ids = ElementsById.remove identifier env.ids;
-  }
-
 let add_label identifier heading env =
   assert env.linking;
   let comp = `Label (identifier, heading) in
@@ -279,26 +258,28 @@ let add_label identifier heading env =
     ids = ElementsById.add identifier comp env.ids;
   }
 
-let add_docs (docs : Odoc_model.Comment.docs) env =
+let add_docs (docs : Comment.docs) env =
   assert env.linking;
   List.fold_left
     (fun env -> function
-      | { Odoc_model.Location_.value = `Heading (attrs, id, text); location } ->
+      | { Location_.value = `Heading (attrs, id, text); location } ->
           let label = Ident.Of_Identifier.label id in
           add_label id { Component.Label.attrs; label; text; location } env
       | _ -> env)
     env docs
 
-let add_comment (com : Odoc_model.Comment.docs_or_stop) env =
+let add_comment (com : Comment.docs_or_stop) env =
   match com with `Docs doc -> add_docs doc env | `Stop -> env
 
 let add_cdocs p (docs : Component.CComment.docs) env =
   List.fold_left
     (fun env element ->
-      match element.Odoc_model.Location_.value with
+      match element.Location_.value with
       | `Heading h ->
           let (`LLabel (name, _)) = h.Component.Label.label in
-          let label = `Label (Paths.Identifier.label_parent p, name) in
+          let label =
+            Paths.Identifier.Mk.label (Paths.Identifier.label_parent p, name)
+          in
           add_label label h env
       | _ -> env)
     env docs
@@ -307,21 +288,20 @@ let add_module identifier m docs env =
   let env' = add_to_elts Kind_Module identifier (`Module (identifier, m)) env in
   if env.linking then add_cdocs identifier docs env' else env'
 
-let update_module identifier m docs env =
-  remove identifier env |> add_module identifier m docs
-
-let add_type identifier t env =
+let add_type (identifier : Identifier.Type.t) t env =
   let open Component in
   let open_typedecl cs =
     let add_cons env (cons : TypeDecl.Constructor.t) =
       let ident =
-        `Constructor (identifier, ConstructorName.make_std cons.name)
+        Paths.Identifier.Mk.constructor
+          ( (identifier :> Identifier.DataType.t),
+            ConstructorName.make_std cons.name )
       in
       add_to_elts Kind_Constructor ident (`Constructor (ident, cons)) env
     and add_field env (field : TypeDecl.Field.t) =
       let ident =
-        `Field
-          ( (identifier :> Odoc_model.Paths.Identifier.Parent.t),
+        Paths.Identifier.Mk.field
+          ( (identifier :> Paths.Identifier.FieldParent.t),
             FieldName.make_std field.name )
       in
       add_to_elts Kind_Field ident (`Field (ident, field)) env
@@ -349,9 +329,6 @@ let add_module_type identifier (t : Component.ModuleType.t) env =
   in
   if env'.linking then add_cdocs identifier t.doc env' else env'
 
-let update_module_type identifier m env =
-  remove identifier env |> add_module_type identifier m
-
 let add_value identifier (t : Component.Value.t) env =
   add_to_elts Kind_Value identifier (`Value (identifier, t)) env
   |> add_cdocs identifier t.doc
@@ -375,18 +352,25 @@ let add_exception identifier (e : Component.Exception.t) env =
   |> add_cdocs identifier e.doc
 
 let add_extension_constructor identifier
-    (ec : Component.Extension.Constructor.t) env =
-  add_to_elts Kind_Extension identifier (`Extension (identifier, ec)) env
+    (ec : Component.Extension.Constructor.t) te env =
+  add_to_elts Kind_Extension identifier (`Extension (identifier, ec, te)) env
   |> add_cdocs identifier ec.doc
 
-let module_of_unit : Odoc_model.Lang.Compilation_unit.t -> Component.Module.t =
+let module_of_unit : Lang.Compilation_unit.t -> Component.Module.t =
  fun unit ->
+  let id = (unit.id :> Paths.Identifier.Module.t) in
+  let locs =
+    match unit.source_info with
+    | Some src -> Some (Identifier.Mk.source_location_mod src.id)
+    | None -> None
+  in
   match unit.content with
   | Module s ->
       let m =
-        Odoc_model.Lang.Module.
+        Lang.Module.
           {
-            id = (unit.id :> Odoc_model.Paths.Identifier.Module.t);
+            id;
+            locs;
             doc = [];
             type_ = ModuleType (Signature s);
             canonical = unit.canonical;
@@ -397,9 +381,10 @@ let module_of_unit : Odoc_model.Lang.Compilation_unit.t -> Component.Module.t =
       ty
   | Pack _p ->
       let m =
-        Odoc_model.Lang.Module.
+        Lang.Module.
           {
-            id = (unit.id :> Odoc_model.Paths.Identifier.Module.t);
+            id;
+            locs;
             doc = [];
             type_ =
               ModuleType (Signature { items = []; compiled = true; doc = [] });
@@ -419,7 +404,9 @@ let lookup_root_module name env =
         | Forward_reference -> Some Forward
         | Not_found -> None
         | Found u ->
-            let (`Root _ as id) = u.id in
+            let ({ Odoc_model.Paths.Identifier.iv = `Root _; _ } as id) =
+              u.id
+            in
             let m = module_of_unit u in
             Some (Resolved (u.root, id, m)))
   in
@@ -439,6 +426,9 @@ let lookup_root_module name env =
 
 let lookup_page name env =
   match env.resolver with None -> None | Some r -> r.lookup_page name
+
+let lookup_unit name env =
+  match env.resolver with None -> None | Some r -> Some (r.lookup_unit name)
 
 type 'a scope = {
   filter : Component.Element.any -> ([< Component.Element.any ] as 'a) option;
@@ -499,8 +489,10 @@ let lookup_by_id (scope : 'a scope) id env : 'a option =
       record_lookup_result x;
       scope.filter x
   | None -> (
+      (* Format.eprintf "Can't find %a\n%!" Component.Fmt.model_identifier (id :> Identifier.t); *)
       match (id :> Identifier.t) with
-      | `Root (_, name) -> scope.root (ModuleName.to_string name) env
+      | { iv = `Root (_, name); _ } ->
+          scope.root (ModuleName.to_string name) env
       | _ -> None)
 
 let lookup_root_module_fallback name t =
@@ -531,27 +523,30 @@ let s_module : Component.Element.module_ scope =
 
 let s_any : Component.Element.any scope =
   make_scope ~root:lookup_page_or_root_module_fallback
-    ~check:
-      (fun env -> function
-        | `Label (id, _) -> (
-            try
-              Some
-                (Identifier.Maps.Label.find id env.ambiguous_labels
-                  :> Component.Element.any amb_err)
-            with Not_found -> None)
-        | _ -> None)
-    (fun r -> Some r)
+    ~check:(fun env -> function
+      | `Label (id, _) -> (
+          try
+            Some
+              (Identifier.Maps.Label.find id env.ambiguous_labels
+                :> Component.Element.any amb_err)
+          with Not_found -> None)
+      | _ -> None)
+    (function
+      (* Reference to [A] could refer to [extension-A] or [extension-decl-A].
+         The legacy behavior refers to the constructor [extension-A]. *)
+      | #Component.Element.extension_decl -> None
+      | r -> Some r)
 
 let s_module_type : Component.Element.module_type scope =
   make_scope (function
     | #Component.Element.module_type as r -> Some r
     | _ -> None)
 
-let s_datatype : Component.Element.datatype scope =
-  make_scope (function #Component.Element.datatype as r -> Some r | _ -> None)
-
 let s_type : Component.Element.type_ scope =
   make_scope (function #Component.Element.type_ as r -> Some r | _ -> None)
+
+let s_datatype : Component.Element.datatype scope =
+  make_scope (function #Component.Element.datatype as r -> Some r | _ -> None)
 
 let s_class : Component.Element.class_ scope =
   make_scope (function #Component.Element.class_ as r -> Some r | _ -> None)
@@ -566,11 +561,10 @@ let s_value : Component.Element.value scope =
 
 let s_label : Component.Element.label scope =
   make_scope
-    ~check:
-      (fun env -> function
-        | `Label (id, _) -> (
-            try Some (Identifier.Maps.Label.find id env.ambiguous_labels)
-            with Not_found -> None))
+    ~check:(fun env -> function
+      | `Label (id, _) -> (
+          try Some (Identifier.Maps.Label.find id env.ambiguous_labels)
+          with Not_found -> None))
     (function #Component.Element.label as r -> Some r | _ -> None)
 
 let s_constructor : Component.Element.constructor scope =
@@ -596,6 +590,11 @@ let s_label_parent : Component.Element.label_parent scope =
     | #Component.Element.label_parent as r -> Some r
     | _ -> None)
 
+let s_fragment_type_parent : Component.Element.fragment_type_parent scope =
+  make_scope ~root:lookup_root_module_fallback (function
+    | #Component.Element.fragment_type_parent as r -> Some r
+    | _ -> None)
+
 let len = ref 0
 
 let n = ref 0
@@ -612,65 +611,55 @@ let lookup_fragment_root env =
       result
   | None -> None
 
-let add_functor_parameter : Odoc_model.Lang.FunctorParameter.t -> t -> t =
+let mk_functor_parameter module_type =
+  let type_ = Component.Module.ModuleType module_type in
+  Component.Module.
+    { locs = None; doc = []; type_; canonical = None; hidden = false }
+
+let add_functor_parameter : Lang.FunctorParameter.t -> t -> t =
  fun p t ->
   match p with
   | Unit -> t
   | Named n ->
+      let id = (n.id :> Paths.Identifier.Path.Module.t) in
       let m =
-        Component.Module.
-          {
-            doc = [];
-            type_ =
-              ModuleType Component.Of_Lang.(module_type_expr (empty ()) n.expr);
-            canonical = None;
-            hidden = false;
-          }
+        let open Component.Of_Lang in
+        mk_functor_parameter (module_type_expr (empty ()) n.expr)
       in
-      add_module
-        (n.id :> Paths.Identifier.Path.Module.t)
-        (Component.Delayed.put_val m)
-        [] t
+      add_module id (Component.Delayed.put_val m) [] t
 
 let add_functor_args' :
-    Odoc_model.Paths.Identifier.Signature.t ->
-    Component.ModuleType.expr ->
-    t ->
-    t =
+    Paths.Identifier.Signature.t -> Component.ModuleType.expr -> t -> t =
   let open Component in
   fun id expr env ->
     let rec find_args parent mty =
       match mty with
       | ModuleType.Functor (Named arg, res) ->
           ( arg.Component.FunctorParameter.id,
-            `Parameter
+            Paths.Identifier.Mk.parameter
               ( parent,
                 Ident.Name.typed_functor_parameter
                   arg.Component.FunctorParameter.id ),
-            {
-              Component.Module.doc = [];
-              type_ = ModuleType arg.expr;
-              canonical = None;
-              hidden = false;
-            } )
-          :: find_args (`Result parent) res
-      | ModuleType.Functor (Unit, res) -> find_args (`Result parent) res
+            mk_functor_parameter arg.expr )
+          :: find_args (Paths.Identifier.Mk.result parent) res
+      | ModuleType.Functor (Unit, res) ->
+          find_args (Paths.Identifier.Mk.result parent) res
       | _ -> []
     in
-    (* We substituted back the parameters as identifiers to maintain the invariant that
-       components in the environment are 'self-contained' - that is, they only contain
-       local idents for things that are declared within themselves *)
+    (* We substituted back the parameters as identifiers to maintain the
+       invariant that components in the environment are 'self-contained' - that
+       is, they only contain local idents for things that are declared within
+       themselves *)
     let fold_fn (env, subst) (ident, identifier, m) =
       let ident, identifier =
         ((ident, identifier) :> Ident.path_module * Identifier.Path.Module.t)
       in
       let doc = m.Component.Module.doc in
       let m = Component.Delayed.put_val (Subst.module_ subst m) in
+      let rp = `Gpath (`Identifier identifier) in
+      let p = `Resolved rp in
       let env' = add_module identifier m doc env in
-      ( env',
-        Subst.add_module ident
-          (`Resolved (`Identifier identifier))
-          (`Identifier identifier) subst )
+      (env', Subst.add_module ident p rp subst)
     in
     let env', _subst =
       List.fold_left fold_fn (env, Subst.identity) (find_args id expr)
@@ -681,33 +670,32 @@ let add_module_functor_args m id env =
   match m.Component.Module.type_ with
   | Alias _ -> env
   | ModuleType expr ->
-      add_functor_args' (id :> Odoc_model.Paths.Identifier.Signature.t) expr env
+      add_functor_args' (id :> Paths.Identifier.Signature.t) expr env
 
 let add_module_type_functor_args mt id env =
   match mt.Component.ModuleType.expr with
   | None -> env
-  | Some expr ->
-      add_functor_args' (id :> Odoc_model.Paths.Identifier.Signature.t) expr env
+  | Some expr -> add_functor_args' (id :> Paths.Identifier.Signature.t) expr env
 
-let open_class_signature : Odoc_model.Lang.ClassSignature.t -> t -> t =
+let open_class_signature : Lang.ClassSignature.t -> t -> t =
   let open Component in
   let open Of_Lang in
   fun s env ->
     List.fold_left
       (fun env orig ->
         match orig with
-        | Odoc_model.Lang.ClassSignature.Method m ->
+        | Lang.ClassSignature.Method m ->
             let ty = method_ (empty ()) m in
-            add_method m.Odoc_model.Lang.Method.id ty env
+            add_method m.Lang.Method.id ty env
         | _ -> env)
       env s.items
 
-let rec open_signature : Odoc_model.Lang.Signature.t -> t -> t =
+let rec open_signature : Lang.Signature.t -> t -> t =
   let open Component in
   let open Of_Lang in
-  let module L = Odoc_model.Lang in
-  let ident_map = empty () in
+  let module L = Lang in
   fun s e ->
+    let ident_map = empty () in
     List.fold_left
       (fun env orig ->
         match ((orig : L.Signature.item), env.linking) with
@@ -742,10 +730,12 @@ let rec open_signature : Odoc_model.Lang.Signature.t -> t -> t =
         | Comment c, true -> add_comment c env
         | TypExt te, true ->
             let doc = docs ident_map te.doc in
+            let te' = extension ident_map te in
             List.fold_left
               (fun env tec ->
                 let ty = extension_constructor ident_map tec in
-                add_extension_constructor tec.L.Extension.Constructor.id ty env)
+                add_extension_constructor tec.L.Extension.Constructor.id ty te'
+                  env)
               env te.L.Extension.constructors
             |> add_cdocs te.L.Extension.parent doc
         | Exception e, true ->
@@ -765,15 +755,13 @@ let open_type_substitution : Odoc_model.Lang.TypeDecl.t -> t -> t =
  fun t env ->
   let open Component in
   let open Of_Lang in
-  let module L = Odoc_model.Lang in
   let ty = type_decl (empty ()) t in
-  add_type t.L.TypeDecl.id ty env
+  add_type t.Lang.TypeDecl.id ty env
 
 let open_module_substitution : Odoc_model.Lang.ModuleSubstitution.t -> t -> t =
  fun m env ->
   let open Component in
   let open Of_Lang in
-  let module L = Odoc_model.Lang in
   let _id = Ident.Of_Identifier.module_ m.id in
   let doc = docs (empty ()) m.doc in
   let ty =
@@ -786,41 +774,21 @@ let open_module_substitution : Odoc_model.Lang.ModuleSubstitution.t -> t -> t =
   in
   add_module (m.id :> Identifier.Path.Module.t) ty doc env
 
-let open_module_type_substitution :
-    Odoc_model.Lang.ModuleTypeSubstitution.t -> t -> t =
+let open_module_type_substitution : Lang.ModuleTypeSubstitution.t -> t -> t =
  fun t env ->
   let open Component in
   let open Of_Lang in
-  let module L = Odoc_model.Lang in
   let ty =
     module_type (empty ())
-      { id = t.id; doc = t.doc; expr = Some t.manifest; canonical = None }
+      {
+        id = t.id;
+        locs = None;
+        doc = t.doc;
+        expr = Some t.manifest;
+        canonical = None;
+      }
   in
-  add_module_type t.L.ModuleTypeSubstitution.id ty env
-
-let rec close_signature : Odoc_model.Lang.Signature.t -> t -> t =
-  let module L = Odoc_model.Lang in
-  fun s e ->
-    assert (not e.linking);
-    List.fold_left
-      (fun env orig ->
-        match (orig : L.Signature.item) with
-        | Type (_, t) -> remove t.L.TypeDecl.id env
-        | Module (_, t) -> remove t.L.Module.id env
-        | ModuleType t -> remove t.L.ModuleType.id env
-        | Class (_, c) -> remove c.id env
-        | ClassType (_, c) -> remove c.id env
-        | Include i -> close_signature i.expansion.content env
-        | Open o -> close_signature o.expansion env
-        | ModuleSubstitution _ | ModuleTypeSubstitution _ | TypeSubstitution _
-          ->
-            env
-        (* The following are only added when linking *)
-        | Exception _ -> env
-        | TypExt _ -> env
-        | Comment _ -> env
-        | Value _ -> env)
-      e s.items
+  add_module_type t.Lang.ModuleTypeSubstitution.id ty env
 
 let inherit_resolver env =
   match env.resolver with Some r -> set_resolver empty r | None -> empty
@@ -837,7 +805,7 @@ let open_units resolver env =
     env resolver.open_units
 
 let env_of_unit t ~linking resolver =
-  let open Odoc_model.Lang.Compilation_unit in
+  let open Lang.Compilation_unit in
   let initial_env =
     let m = module_of_unit t in
     let dm = Component.Delayed.put (fun () -> m) in
@@ -846,7 +814,7 @@ let env_of_unit t ~linking resolver =
   in
   set_resolver initial_env resolver |> open_units resolver
 
-let open_page page env = add_docs page.Odoc_model.Lang.Page.content env
+let open_page page env = add_docs page.Lang.Page.content env
 
 let env_of_page page resolver =
   let initial_env = open_page page empty in

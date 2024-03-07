@@ -15,18 +15,30 @@ let traverse ~f t =
     f node.filename node.content;
     List.iter aux node.children
   in
-  aux t
+  List.iter aux t
+
+type input =
+  | CU of Odoc_model.Lang.Compilation_unit.t
+  | Page of Odoc_model.Lang.Page.t
 
 type 'a t = {
   name : string;
-  render : 'a -> Types.Page.t -> page;
-  files_of_url : Url.Path.t -> Fpath.t list;
+  render : 'a -> Types.Document.t -> page list;
+  extra_documents : 'a -> input -> syntax:syntax -> Types.Document.t list;
 }
 
 let document_of_page ~syntax v =
   match syntax with Reason -> Reason.page v | OCaml -> ML.page v
 
+let documents_of_source_tree ~syntax v =
+  match syntax with Reason -> Reason.source_tree v | OCaml -> ML.source_tree v
+
 let document_of_compilation_unit ~syntax v =
   match syntax with
   | Reason -> Reason.compilation_unit v
   | OCaml -> ML.compilation_unit v
+
+let document_of_source ~syntax =
+  match syntax with
+  | Reason -> Reason.source_page (* Currently, both functions are equivalent *)
+  | OCaml -> ML.source_page

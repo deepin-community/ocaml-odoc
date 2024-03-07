@@ -152,10 +152,66 @@ v}
     %}
 
 
+    {1 Math}
+
+    Math elements can be inline: {m \int_{-\infty}^\infty}, or blocks:
+
+    {math
+    % \f is defined as #1f(#2) using the macro
+    \newcommand{\f}[2]{#1f(#2)}
+    \f\relax{x} = \int_{-\infty}^\infty
+    \f\hat\xi\,e^{2 \pi i \xi x}
+    \,d\xi
+    }
+
+
     {1 Modules}
 
     {!modules: X}
     {!modules: X Y}
+
+
+    {1 Tables}
+
+    {t
+        Left | Center | Right | Default
+       :-----|:------:|------:|---------
+         A   |    B   |   C   |    D
+    }
+
+    {t
+        Left | Center | Right | Default
+       :-----|:------:|------:|---------
+         A   |    B   |   C   |    D
+         A much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it   |    B much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it   |   C much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it   |    D much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it
+    }
+
+    {t
+        No | Header
+        A  | B
+    }
+
+    {table
+      {tr
+        {th Header 1}
+        {th Header 2}
+      }
+      {tr
+        {td Data 1}
+        {td Data 2}
+      }
+    }
+
+    {table
+      {tr
+        {th Header 1}
+        {td Data 1}
+      }
+      {tr
+        {th Header 2}
+        {td Data 2}
+      }
+    }
 
 
     {1 Tags}

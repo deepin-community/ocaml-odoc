@@ -17,6 +17,17 @@
 open Paths
 
 (** {3 Modules} *)
+module Source_info = struct
+  type annotation =
+    | Definition of Paths.Identifier.SourceLocation.t
+    | Value of Paths.Identifier.SourceLocation.t
+
+  type 'a with_pos = 'a * (int * int)
+
+  type infos = annotation with_pos list
+
+  type t = { id : Identifier.SourcePage.t; infos : infos }
+end
 
 module rec Module : sig
   type decl =
@@ -25,6 +36,8 @@ module rec Module : sig
 
   type t = {
     id : Identifier.Module.t;
+    locs : Identifier.SourceLocation.t option;
+        (** Identifier.SourceLocation might not be set when the module is artificially constructed from a functor argument. *)
     doc : Comment.docs;
     type_ : decl;
     canonical : Path.Module.t option;
@@ -101,6 +114,8 @@ and ModuleType : sig
 
   type t = {
     id : Identifier.ModuleType.t;
+    locs : Identifier.SourceLocation.t option;
+        (** Can be [None] for module types created by a type substitution. *)
     doc : Comment.docs;
     canonical : Path.ModuleType.t option;
     expr : expr option;
@@ -240,6 +255,7 @@ and TypeDecl : sig
 
   type t = {
     id : Identifier.Type.t;
+    locs : Identifier.SourceLocation.t option;
     doc : Comment.docs;
     canonical : Path.Type.t option;
     equation : Equation.t;
@@ -254,6 +270,7 @@ and Extension : sig
   module Constructor : sig
     type t = {
       id : Identifier.Extension.t;
+      locs : Identifier.SourceLocation.t option;
       doc : Comment.docs;
       args : TypeDecl.Constructor.argument;
       res : TypeExpr.t option;
@@ -275,6 +292,7 @@ end =
 and Exception : sig
   type t = {
     id : Identifier.Exception.t;
+    locs : Identifier.SourceLocation.t option;
     doc : Comment.docs;
     args : TypeDecl.Constructor.argument;
     res : TypeExpr.t option;
@@ -289,9 +307,10 @@ and Value : sig
 
   type t = {
     id : Identifier.Value.t;
+    locs : Identifier.SourceLocation.t option;
+    value : value;
     doc : Comment.docs;
     type_ : TypeExpr.t;
-    value : value;
   }
 end =
   Value
@@ -305,6 +324,7 @@ and Class : sig
 
   type t = {
     id : Identifier.Class.t;
+    locs : Identifier.SourceLocation.t option;
     doc : Comment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -323,6 +343,7 @@ and ClassType : sig
 
   type t = {
     id : Identifier.ClassType.t;
+    locs : Identifier.SourceLocation.t option;
     doc : Comment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -335,11 +356,19 @@ end =
 (** {3 Class Signatures} *)
 
 and ClassSignature : sig
+  module Constraint : sig
+    type t = { left : TypeExpr.t; right : TypeExpr.t; doc : Comment.docs }
+  end
+
+  module Inherit : sig
+    type t = { expr : ClassType.expr; doc : Comment.docs }
+  end
+
   type item =
     | Method of Method.t
     | InstanceVariable of InstanceVariable.t
-    | Constraint of TypeExpr.t * TypeExpr.t
-    | Inherit of ClassType.expr
+    | Constraint of Constraint.t
+    | Inherit of Inherit.t
     | Comment of Comment.docs_or_stop
 
   type t = { self : TypeExpr.t option; items : item list; doc : Comment.docs }
@@ -456,21 +485,41 @@ module rec Compilation_unit : sig
     expansion : Signature.t option;
     linked : bool;  (** Whether this unit has been linked. *)
     canonical : Path.Module.t option;
+    source_info : Source_info.t option;
+    shape_info :
+      (Compat.shape * Paths.Identifier.SourceLocation.t Compat.shape_uid_map)
+      option;
   }
 end =
   Compilation_unit
 
 module rec Page : sig
+  type child =
+    | Page_child of string
+    | Module_child of string
+    | Source_tree_child of string
+    | Asset_child of string
+
   type t = {
     name : Identifier.Page.t;
     root : Root.t;
     content : Comment.docs;
-    children : Reference.t list;
+    children : child list;
     digest : Digest.t;
     linked : bool;
   }
 end =
   Page
+
+module rec SourceTree : sig
+  type t = {
+    name : Identifier.Page.t;
+    root : Root.t;
+    source_children : Identifier.SourcePage.t list;
+    digest : Digest.t;
+  }
+end =
+  SourceTree
 
 let umty_of_mty : ModuleType.expr -> ModuleType.U.expr option = function
   | Signature sg -> Some (Signature sg)

@@ -1,3 +1,51 @@
+ocaml-odoc (2.4.1-1) unstable; urgency=medium
+
+  * Team upload
+  * New upstream release
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 19 Feb 2024 13:10:29 +0100
+
+ocaml-odoc (2.3.0-2) unstable; urgency=medium
+
+  * Build-depend on ocaml-dune >= 3.11.0
+
+ -- Stéphane Glondu <glondu@debian.org>  Mon, 16 Oct 2023 15:57:38 +0200
+
+ocaml-odoc (2.3.0-1) unstable; urgency=medium
+
+  * Team upload
+  * New upstream release
+    - take over binary packages libodoc-parser-ocaml{,-dev}
+
+ -- Stéphane Glondu <glondu@debian.org>  Sat, 14 Oct 2023 10:57:01 +0200
+
+ocaml-odoc (2.2.1-2) unstable; urgency=medium
+
+  [ Stéphane Glondu ]
+  * Team upload
+
+  [ Dr. Tobias Quathamer ]
+  * Check for existence of debian/patches/series in autopkgtest (Closes:
+    #1053634)
+
+ -- Stéphane Glondu <glondu@debian.org>  Sun, 08 Oct 2023 09:04:17 +0200
+
+ocaml-odoc (2.2.1-1) unstable; urgency=medium
+
+  * Team upload
+  * New upstream release
+
+ -- Stéphane Glondu <glondu@debian.org>  Sun, 27 Aug 2023 21:47:36 +0200
+
+ocaml-odoc (2.2.0-1) unstable; urgency=medium
+
+  * Team upload
+  * New upstream release
+  * Include ocamlvars.mk in debian/rules
+  * Bump Standards-Version to 4.6.2
+
+ -- Stéphane Glondu <glondu@debian.org>  Sat, 22 Jul 2023 11:37:33 +0200
+
 ocaml-odoc (2.1.1+dfsg-3) unstable; urgency=medium
 
   * Team upload

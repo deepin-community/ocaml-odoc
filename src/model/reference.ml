@@ -68,6 +68,7 @@ let match_extra_odoc_reference_kind (_location as loc) s :
       d loc "exn" "exception";
       Some `TException
   | Some "extension" -> Some `TExtension
+  | Some "extension-decl" -> Some `TExtensionDecl
   | Some "field" -> Some `TField
   | Some "instance-variable" -> Some `TInstanceVariable
   | Some "label" ->
@@ -213,18 +214,15 @@ let parse whole_reference_location s :
         | _ ->
             expected [ "module"; "module-type" ] location
             |> Error.raise_exception)
-  and parent (kind, identifier, location) tokens : Parent.t =
+  and parent (kind, identifier, location) tokens : FragmentTypeParent.t =
     let kind = match_reference_kind location kind in
     match tokens with
     | [] -> (
         match kind with
-        | (`TUnknown | `TModule | `TModuleType | `TType | `TClass | `TClassType)
-          as kind ->
+        | (`TUnknown | `TModule | `TModuleType | `TType) as kind ->
             `Root (identifier, kind)
         | _ ->
-            expected
-              [ "module"; "module-type"; "type"; "class"; "class-type" ]
-              location
+            expected [ "module"; "module-type"; "type" ] location
             |> Error.raise_exception)
     | next_token :: tokens -> (
         match kind with
@@ -237,15 +235,8 @@ let parse whole_reference_location s :
               (signature next_token tokens, ModuleTypeName.make_std identifier)
         | `TType ->
             `Type (signature next_token tokens, TypeName.make_std identifier)
-        | `TClass ->
-            `Class (signature next_token tokens, ClassName.make_std identifier)
-        | `TClassType ->
-            `ClassType
-              (signature next_token tokens, ClassTypeName.make_std identifier)
         | _ ->
-            expected
-              [ "module"; "module-type"; "type"; "class"; "class-type" ]
-              location
+            expected [ "module"; "module-type"; "type" ] location
             |> Error.raise_exception)
   in
 
@@ -270,22 +261,6 @@ let parse whole_reference_location s :
         | _ ->
             expected [ "class"; "class-type" ] location |> Error.raise_exception
         )
-  in
-
-  let datatype (kind, identifier, location) tokens : DataType.t =
-    let kind = match_reference_kind location kind in
-    match tokens with
-    | [] -> (
-        match kind with
-        | (`TUnknown | `TType) as kind -> `Root (identifier, kind)
-        | _ -> expected [ "type" ] location |> Error.raise_exception)
-    | next_token :: tokens -> (
-        match kind with
-        | `TUnknown ->
-            `Dot ((parent next_token tokens :> LabelParent.t), identifier)
-        | `TType ->
-            `Type (signature next_token tokens, TypeName.make_std identifier)
-        | _ -> expected [ "type" ] location |> Error.raise_exception)
   in
 
   let rec label_parent (kind, identifier, location) tokens : LabelParent.t =
@@ -336,12 +311,12 @@ let parse whole_reference_location s :
           | `TUnknown -> old_kind
           | _ ->
               (if old_kind <> new_kind then
-               let new_kind_string =
-                 match kind with Some s -> s | None -> ""
-               in
-               reference_kinds_do_not_match old_kind_string new_kind_string
-                 whole_reference_location
-               |> Error.raise_warning);
+                 let new_kind_string =
+                   match kind with Some s -> s | None -> ""
+                 in
+                 reference_kinds_do_not_match old_kind_string new_kind_string
+                   whole_reference_location
+                 |> Error.raise_warning);
               new_kind)
     in
 
@@ -359,11 +334,14 @@ let parse whole_reference_location s :
             `Type (signature next_token tokens, TypeName.make_std identifier)
         | `TConstructor ->
             `Constructor
-              (datatype next_token tokens, ConstructorName.make_std identifier)
+              (parent next_token tokens, ConstructorName.make_std identifier)
         | `TField ->
             `Field (parent next_token tokens, FieldName.make_std identifier)
         | `TExtension ->
             `Extension
+              (signature next_token tokens, ExtensionName.make_std identifier)
+        | `TExtensionDecl ->
+            `ExtensionDecl
               (signature next_token tokens, ExtensionName.make_std identifier)
         | `TException ->
             `Exception

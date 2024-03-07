@@ -367,7 +367,7 @@ Unary exception constructor over binary tuple
 \f[CI]a_function\fR is this type and \f[CI]a_function\fR is the value below\.
 .nf 
 .sp 
-\f[CB]val\fR a_function : x:int \f[CB]\->\fR int
+\f[CB]val\fR a_function : \f[CB]x\fR:int \f[CB]\->\fR int
 .fi 
 .br 
 .ti +2
@@ -380,16 +380,22 @@ This is a_function with param and return type\.
 @returns: the y coordinate
 .nf 
 .sp 
-\f[CB]val\fR fun_fun_fun : 
-  ( ( int, int ) a_function, ( unit, unit ) a_function ) a_function
+\f[CB]val\fR fun_fun_fun : ((int, int) a_function, (unit, unit) a_function) a_function
 .sp 
-\f[CB]val\fR fun_maybe : ?yes:unit \f[CB]\->\fR unit \f[CB]\->\fR int
+\f[CB]val\fR fun_maybe : \f[CB]?yes\fR:unit \f[CB]\->\fR unit \f[CB]\->\fR int
 .sp 
 \f[CB]val\fR not_found : unit \f[CB]\->\fR unit
 .fi 
 .br 
 .ti +2
 @raises Not_found: That's all it does
+.nf 
+.sp 
+\f[CB]val\fR kaboom : unit \f[CB]\->\fR unit
+.fi 
+.br 
+.ti +2
+@raises \f[CI]Kaboom\fR: That's all it does
 .nf 
 .sp 
 \f[CB]val\fR ocaml_org : string
@@ -519,7 +525,7 @@ This comment is for t\.
 \f[CB]module\fR InnerModuleA' : \f[CB]sig\fR
 .br 
 .ti +6
-\f[CB]type\fR t = ( unit, unit ) a_function
+\f[CB]type\fR t = (unit, unit) a_function
 .fi 
 .br 
 .ti +8
@@ -622,7 +628,7 @@ This comment is for t\.
 \f[CB]module\fR InnerModuleA' : \f[CB]sig\fR
 .br 
 .ti +8
-\f[CB]type\fR t = ( unit, unit ) a_function
+\f[CB]type\fR t = (unit, unit) a_function
 .fi 
 .br 
 .ti +10
@@ -711,7 +717,7 @@ This comment is for t\.
 \f[CB]module\fR InnerModuleA' : \f[CB]sig\fR
 .br 
 .ti +6
-\f[CB]type\fR t = ( unit, unit ) a_function
+\f[CB]type\fR t = (unit, unit) a_function
 .fi 
 .br 
 .ti +8
@@ -806,7 +812,7 @@ This comment is for t\.
 \f[CB]module\fR InnerModuleA' : \f[CB]sig\fR
 .br 
 .ti +8
-\f[CB]type\fR t = ( unit, unit ) a_function
+\f[CB]type\fR t = (unit, unit) a_function
 .fi 
 .br 
 .ti +10
@@ -904,7 +910,7 @@ This comment is for t\.
 \f[CB]module\fR InnerModuleA' : \f[CB]sig\fR
 .br 
 .ti +8
-\f[CB]type\fR t = ( unit, unit ) a_function
+\f[CB]type\fR t = (unit, unit) a_function
 .fi 
 .br 
 .ti +10
@@ -1002,7 +1008,7 @@ This comment is for t\.
 \f[CB]module\fR InnerModuleA' : \f[CB]sig\fR
 .br 
 .ti +8
-\f[CB]type\fR t = ( unit, unit ) a_function
+\f[CB]type\fR t = (unit, unit) a_function
 .fi 
 .br 
 .ti +10
@@ -1234,16 +1240,16 @@ Wow! It was a polymorphic variant!
 \f[CB]type\fR (_, _) full_gadt = 
 .br 
 .ti +2
-| \f[CB]Tag\fR : ( unit, unit ) full_gadt
+| \f[CB]Tag\fR : (unit, unit) full_gadt
 .br 
 .ti +2
-| \f[CB]First\fR : \f[CB]'a\fR \f[CB]\->\fR ( \f[CB]'a\fR, unit ) full_gadt
+| \f[CB]First\fR : \f[CB]'a\fR \f[CB]\->\fR (\f[CB]'a\fR, unit) full_gadt
 .br 
 .ti +2
-| \f[CB]Second\fR : \f[CB]'a\fR \f[CB]\->\fR ( unit, \f[CB]'a\fR ) full_gadt
+| \f[CB]Second\fR : \f[CB]'a\fR \f[CB]\->\fR (unit, \f[CB]'a\fR) full_gadt
 .br 
 .ti +2
-| \f[CB]Exist\fR : \f[CB]'a\fR * \f[CB]'b\fR \f[CB]\->\fR ( \f[CB]'b\fR, unit ) full_gadt
+| \f[CB]Exist\fR : \f[CB]'a\fR * \f[CB]'b\fR \f[CB]\->\fR (\f[CB]'b\fR, unit) full_gadt
 .br 
 .fi 
 .br 
@@ -1263,7 +1269,7 @@ Wow! It was a GADT!
 | \f[CB]OfTag\fR \f[CB]of\fR \f[CB]'a\fR partial_gadt
 .br 
 .ti +2
-| \f[CB]ExistGadtTag\fR : ( \f[CB]'a\fR \f[CB]\->\fR \f[CB]'b\fR ) \f[CB]\->\fR \f[CB]'a\fR partial_gadt
+| \f[CB]ExistGadtTag\fR : (\f[CB]'a\fR \f[CB]\->\fR \f[CB]'b\fR) \f[CB]\->\fR \f[CB]'a\fR partial_gadt
 .br 
 .fi 
 .br 
@@ -1385,19 +1391,19 @@ This comment is for poly_variant_union\.
 .br 
  ]
 .sp 
-\f[CB]type\fR ('a, 'b) full_gadt_alias = ( \f[CB]'a\fR, \f[CB]'b\fR ) full_gadt = 
+\f[CB]type\fR ('a, 'b) full_gadt_alias = (\f[CB]'a\fR, \f[CB]'b\fR) full_gadt = 
 .br 
 .ti +2
-| \f[CB]Tag\fR : ( unit, unit ) full_gadt_alias
+| \f[CB]Tag\fR : (unit, unit) full_gadt_alias
 .br 
 .ti +2
-| \f[CB]First\fR : \f[CB]'a\fR \f[CB]\->\fR ( \f[CB]'a\fR, unit ) full_gadt_alias
+| \f[CB]First\fR : \f[CB]'a\fR \f[CB]\->\fR (\f[CB]'a\fR, unit) full_gadt_alias
 .br 
 .ti +2
-| \f[CB]Second\fR : \f[CB]'a\fR \f[CB]\->\fR ( unit, \f[CB]'a\fR ) full_gadt_alias
+| \f[CB]Second\fR : \f[CB]'a\fR \f[CB]\->\fR (unit, \f[CB]'a\fR) full_gadt_alias
 .br 
 .ti +2
-| \f[CB]Exist\fR : \f[CB]'a\fR * \f[CB]'b\fR \f[CB]\->\fR ( \f[CB]'b\fR, unit ) full_gadt_alias
+| \f[CB]Exist\fR : \f[CB]'a\fR * \f[CB]'b\fR \f[CB]\->\fR (\f[CB]'b\fR, unit) full_gadt_alias
 .br 
 .fi 
 .br 
@@ -1414,7 +1420,7 @@ This comment is for full_gadt_alias\.
 | \f[CB]OfTag\fR \f[CB]of\fR \f[CB]'a\fR partial_gadt_alias
 .br 
 .ti +2
-| \f[CB]ExistGadtTag\fR : ( \f[CB]'a\fR \f[CB]\->\fR \f[CB]'b\fR ) \f[CB]\->\fR \f[CB]'a\fR partial_gadt_alias
+| \f[CB]ExistGadtTag\fR : (\f[CB]'a\fR \f[CB]\->\fR \f[CB]'b\fR) \f[CB]\->\fR \f[CB]'a\fR partial_gadt_alias
 .br 
 .fi 
 .br 
@@ -1509,7 +1515,7 @@ A mystery wrapped in an ellipsis
 | \f[CB]ExtE\fR
 .br 
 .sp 
-\f[CB]type\fR ext += 
+\f[CB]type\fR ext += \f[CB]private\fR 
 .br 
 .ti +2
 | \f[CB]ExtF\fR
@@ -1577,11 +1583,11 @@ Rotate keys on my mark\.\.\.
 A brown paper package tied up with string
 .nf 
 .sp 
-\f[CB]class\fR  empty_class : \f[CB]object\fR \.\.\. \f[CB]end\fR
+\f[CB]class\fR empty_class : \f[CB]object\fR \.\.\. \f[CB]end\fR
 .sp 
-\f[CB]class\fR  one_method_class : \f[CB]object\fR \.\.\. \f[CB]end\fR
+\f[CB]class\fR one_method_class : \f[CB]object\fR \.\.\. \f[CB]end\fR
 .sp 
-\f[CB]class\fR  two_method_class : \f[CB]object\fR \.\.\. \f[CB]end\fR
+\f[CB]class\fR two_method_class : \f[CB]object\fR \.\.\. \f[CB]end\fR
 .sp 
 \f[CB]class\fR 'a param_class : \f[CB]'a\fR \f[CB]\->\fR \f[CB]object\fR \.\.\. \f[CB]end\fR
 .sp 
@@ -1893,3 +1899,18 @@ Here goes:
 \f[CB]val\fR f : new_t \f[CB]\->\fR unit
 .br 
 \f[CB]end\fR
+.sp 
+.in 3
+\fB8 Unresolved references\fR
+.in 
+.sp 
+.fi 
+\(bu Stdlib\.Invalid_argument
+.br 
+\(bu Hashtbl\.t
+.br 
+\(bu Set\.S\.empty
+.br 
+\(bu CollectionModule\.InnerModuleA\.foo
+.nf 
+
