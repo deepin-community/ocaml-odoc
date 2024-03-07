@@ -11,6 +11,8 @@ module ModuleTypeMap : Map.S with type key = Ident.module_type
 
 module PathTypeMap : Map.S with type key = Ident.path_type
 
+module PathValueMap : Map.S with type key = Ident.path_value
+
 module PathClassTypeMap : Map.S with type key = Ident.path_class_type
 
 module IdentMap : Map.S with type key = Ident.any
@@ -66,9 +68,10 @@ module rec Module : sig
     | ModuleType of ModuleType.expr
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     type_ : decl;
-    canonical : Cpath.module_ option;
+    canonical : Odoc_model.Paths.Path.Module.t option;
     hidden : bool;
   }
 end
@@ -133,6 +136,7 @@ and Extension : sig
   module Constructor : sig
     type t = {
       name : string;
+      locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
       doc : CComment.docs;
       args : TypeDecl.Constructor.argument;
       res : TypeExpr.t option;
@@ -150,6 +154,7 @@ end
 
 and Exception : sig
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     args : TypeDecl.Constructor.argument;
     res : TypeExpr.t option;
@@ -211,8 +216,9 @@ and ModuleType : sig
     | TypeOf of typeof_t
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
-    canonical : Cpath.module_type option;
+    canonical : Odoc_model.Paths.Path.ModuleType.t option;
     expr : expr option;
   }
 end
@@ -257,8 +263,9 @@ and TypeDecl : sig
   end
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
-    canonical : Cpath.type_ option;
+    canonical : Odoc_model.Paths.Path.Type.t option;
     equation : Equation.t;
     representation : Representation.t option;
   }
@@ -320,7 +327,12 @@ end
 and Value : sig
   type value = Odoc_model.Lang.Value.value
 
-  type t = { doc : CComment.docs; type_ : TypeExpr.t; value : value }
+  type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
+    doc : CComment.docs;
+    type_ : TypeExpr.t;
+    value : value;
+  }
 end
 
 and Class : sig
@@ -329,6 +341,7 @@ and Class : sig
     | Arrow of TypeExpr.label option * TypeExpr.t * decl
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -343,6 +356,7 @@ and ClassType : sig
     | Signature of ClassSignature.t
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -352,11 +366,19 @@ and ClassType : sig
 end
 
 and ClassSignature : sig
+  module Constraint : sig
+    type t = { left : TypeExpr.t; right : TypeExpr.t; doc : CComment.docs }
+  end
+
+  module Inherit : sig
+    type t = { expr : ClassType.expr; doc : CComment.docs }
+  end
+
   type item =
     | Method of Ident.method_ * Method.t
     | InstanceVariable of Ident.instance_variable * InstanceVariable.t
-    | Constraint of TypeExpr.t * TypeExpr.t
-    | Inherit of ClassType.expr
+    | Constraint of Constraint.t
+    | Inherit of Inherit.t
     | Comment of CComment.docs_or_stop
 
   type t = { self : TypeExpr.t option; items : item list; doc : CComment.docs }
@@ -426,7 +448,7 @@ and Label : sig
   type t = {
     attrs : Odoc_model.Comment.heading_attrs;
     label : Ident.label;
-    text : Odoc_model.Comment.link_content;
+    text : Odoc_model.Comment.paragraph;
     location : Odoc_model.Location_.span;
   }
 end
@@ -438,7 +460,7 @@ module Element : sig
 
   type module_type = [ `ModuleType of Identifier.ModuleType.t * ModuleType.t ]
 
-  type type_ = [ `Type of Identifier.Type.t * TypeDecl.t ]
+  type datatype = [ `Type of Identifier.Type.t * TypeDecl.t ]
 
   type value = [ `Value of Identifier.Value.t * Value.t ]
 
@@ -448,7 +470,7 @@ module Element : sig
 
   type class_type = [ `ClassType of Identifier.ClassType.t * ClassType.t ]
 
-  type datatype = [ type_ | class_ | class_type ]
+  type type_ = [ datatype | class_ | class_type ]
 
   type signature = [ module_ | module_type ]
 
@@ -458,25 +480,32 @@ module Element : sig
   type exception_ = [ `Exception of Identifier.Exception.t * Exception.t ]
 
   type extension =
-    [ `Extension of Identifier.Extension.t * Extension.Constructor.t ]
+    [ `Extension of
+      Identifier.Extension.t * Extension.Constructor.t * Extension.t ]
+
+  type extension_decl =
+    [ `ExtensionDecl of Identifier.Extension.t * Extension.Constructor.t ]
 
   type field = [ `Field of Identifier.Field.t * TypeDecl.Field.t ]
 
   (* No component for pages yet *)
   type page = [ `Page of Identifier.Page.t * Odoc_model.Lang.Page.t ]
 
-  type label_parent = [ signature | datatype | page ]
+  type label_parent = [ signature | type_ | page ]
+
+  type fragment_type_parent = [ signature | datatype ]
 
   type any =
     [ signature
     | value
-    | type_
+    | datatype
     | label
     | class_
     | class_type
     | constructor
     | exception_
     | extension
+    | extension_decl
     | field
     | page ]
 
@@ -560,9 +589,15 @@ module Fmt : sig
 
   val resolved_type_path : Format.formatter -> Cpath.Resolved.type_ -> unit
 
+  val resolved_value_path : Format.formatter -> Cpath.Resolved.value -> unit
+
   val resolved_parent_path : Format.formatter -> Cpath.Resolved.parent -> unit
 
   val type_path : Format.formatter -> Cpath.type_ -> unit
+
+  val value_path : Format.formatter -> Cpath.value -> unit
+
+  val constructor_path : Format.formatter -> Cpath.constructor -> unit
 
   val resolved_class_type_path :
     Format.formatter -> Cpath.Resolved.class_type -> unit
@@ -625,6 +660,14 @@ module Of_Lang : sig
   val resolved_type_path :
     map -> Odoc_model.Paths.Path.Resolved.Type.t -> Cpath.Resolved.type_
 
+  val resolved_value_path :
+    map -> Odoc_model.Paths.Path.Resolved.Value.t -> Cpath.Resolved.value
+
+  val resolved_constructor_path :
+    map ->
+    Odoc_model.Paths.Path.Resolved.Constructor.t ->
+    Cpath.Resolved.constructor
+
   val resolved_class_type_path :
     map ->
     Odoc_model.Paths.Path.Resolved.ClassType.t ->
@@ -636,6 +679,13 @@ module Of_Lang : sig
     map -> Odoc_model.Paths.Path.ModuleType.t -> Cpath.module_type
 
   val type_path : map -> Odoc_model.Paths.Path.Type.t -> Cpath.type_
+
+  val datatype : map -> Odoc_model.Paths.Path.DataType.t -> Cpath.datatype
+
+  val value_path : map -> Odoc_model.Paths.Path.Value.t -> Cpath.value
+
+  val constructor_path :
+    map -> Odoc_model.Paths.Path.Constructor.t -> Cpath.constructor
 
   val class_type_path :
     map -> Odoc_model.Paths.Path.ClassType.t -> Cpath.class_type
@@ -704,9 +754,6 @@ module Of_Lang : sig
   val module_decl : map -> Odoc_model.Lang.Module.decl -> Module.decl
 
   val include_decl : map -> Odoc_model.Lang.Include.decl -> Include.decl
-
-  val canonical :
-    map -> Odoc_model.Paths.Path.Module.t option -> Cpath.module_ option
 
   val module_ : map -> Odoc_model.Lang.Module.t -> Module.t
 

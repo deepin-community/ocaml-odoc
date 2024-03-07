@@ -16,13 +16,18 @@
 
 open Odoc_document
 
+module Source : sig
+  type t = File of Fpath.t | Root of Fpath.t
+
+  val pp : Format.formatter -> t -> unit
+end
+
+type source = Source.t
+
 type args = {
-  semantic_uris : bool;
-  closed_details : bool;
-  indent : bool;
-  theme_uri : Odoc_html.Tree.uri;
-  support_uri : Odoc_html.Tree.uri;
-  flat : bool;
+  html_config : Odoc_html.Config.t;
+  source : source option;
+  assets : Fpath.t list;
 }
 
 val renderer : args Renderer.t

@@ -7,6 +7,10 @@
 
 open Errors.Tools_error
 
+type expansion =
+  | Signature of Component.Signature.t
+  | Functor of Component.FunctorParameter.t * Component.ModuleType.expr
+
 (** {2 Lookup and resolve functions} *)
 
 (** The following lookup and resolve functions take {{!module:Cpath.Resolved}resolved paths}
@@ -145,6 +149,16 @@ val resolve_type_path :
   Cpath.type_ ->
   (Cpath.Resolved.type_, simple_type_lookup_error) Result.result
 
+val resolve_value_path :
+  Env.t ->
+  Cpath.value ->
+  (Cpath.Resolved.value, simple_value_lookup_error) Result.result
+
+val resolve_constructor_path :
+  Env.t ->
+  Cpath.constructor ->
+  (Cpath.Resolved.constructor, simple_constructor_lookup_error) Result.result
+
 val resolve_class_type_path :
   Env.t ->
   Cpath.class_type ->
@@ -163,6 +177,11 @@ val reresolve_module_type :
   Env.t -> Cpath.Resolved.module_type -> Cpath.Resolved.module_type
 
 val reresolve_type : Env.t -> Cpath.Resolved.type_ -> Cpath.Resolved.type_
+
+val reresolve_constructor :
+  Env.t -> Cpath.Resolved.constructor -> Cpath.Resolved.constructor
+
+val reresolve_value : Env.t -> Cpath.Resolved.value -> Cpath.Resolved.value
 
 val reresolve_class_type :
   Env.t -> Cpath.Resolved.class_type -> Cpath.Resolved.class_type
@@ -201,15 +220,24 @@ val get_module_type_path_modifiers :
 val prefix_signature :
   Cpath.Resolved.parent * Component.Signature.t -> Component.Signature.t
 
-val signature_of_module :
+val assert_not_functor :
+  expansion -> (Component.Signature.t, 'err) Result.result
+
+val expansion_of_module_path :
+  Env.t ->
+  strengthen:bool ->
+  Cpath.module_ ->
+  (expansion, expansion_of_module_error) Result.result
+
+val expansion_of_module :
   Env.t ->
   Component.Module.t ->
-  (Component.Signature.t, signature_of_module_error) Result.result
+  (expansion, expansion_of_module_error) Result.result
 
-val signature_of_module_type :
+val expansion_of_module_type :
   Env.t ->
   Component.ModuleType.t ->
-  (Component.Signature.t, signature_of_module_error) Result.result
+  (expansion, expansion_of_module_error) Result.result
 
 val class_signature_of_class_type :
   Env.t -> Component.ClassType.t -> Component.ClassSignature.t option
@@ -219,11 +247,11 @@ val class_signature_of_class :
 
 (** {2 Fragment resolution} *)
 
-val signature_of_module_type_expr :
+val expansion_of_module_type_expr :
   mark_substituted:bool ->
   Env.t ->
   Component.ModuleType.expr ->
-  (Component.Signature.t, signature_of_module_error) Result.result
+  (expansion, expansion_of_module_error) Result.result
 (** The following functions are use for the resolution of {{!type:Odoc_model.Paths.Fragment.t}Fragments}
     Whilst resolving fragments it is necessary to process them in order, applying
     the 'with' expression of module or type equality or substitution, before resolving
@@ -237,7 +265,7 @@ val signature_of_u_module_type_expr :
   mark_substituted:bool ->
   Env.t ->
   Component.ModuleType.U.expr ->
-  (Component.Signature.t, signature_of_module_error) Result.result
+  (Component.Signature.t, expansion_of_module_error) Result.result
 (** The following functions are use for the resolution of {{!type:Odoc_model.Paths.Fragment.t}Fragments}
       Whilst resolving fragments it is necessary to process them in order, applying
       the 'with' expression of module or type equality or substitution, before resolving
@@ -311,7 +339,7 @@ val fragmap :
   Env.t ->
   Component.ModuleType.substitution ->
   Component.Signature.t ->
-  (Component.Signature.t, signature_of_module_error) Result.result
+  (Component.Signature.t, expansion_of_module_error) Result.result
 (** [fragmap ~mark_substituted env sub sg] takes an environment [env]
     and signature [sg], and a fragment substitution (e.g.
     [ModuleSubst] to destructively substitute a module), and returns the substituted
@@ -322,7 +350,7 @@ val handle_signature_with_subs :
   Env.t ->
   Component.Signature.t ->
   Component.ModuleType.substitution list ->
-  (Component.Signature.t, signature_of_module_error) Result.result
+  (Component.Signature.t, expansion_of_module_error) Result.result
 (** [handle_signature_with_subs ~mark_substituted env sg subs] applies the
     fragment modifiers [subs], in order, to the supplied signature [sg]. *)
 

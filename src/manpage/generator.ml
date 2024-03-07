@@ -43,6 +43,8 @@ module Roff = struct
     | String of string
     | Vspace
     | Indent of int * t
+    | Align_line of string
+    | Table_cell of t
 
   let noop = Concat []
 
@@ -207,6 +209,13 @@ module Roff = struct
           | Macro (s, args) ->
               pp_macro ppf s "%s" args;
               newline_if ppf (not is_macro)
+          | Align_line s ->
+              Format.pp_print_string ppf (s ^ ".");
+              newline_if ppf (not is_macro)
+          | Table_cell c ->
+              Format.pp_print_text ppf "T{\n";
+              one ~indent ppf c;
+              Format.pp_print_text ppf "\nT}"
           | Indent (i, content) ->
               let indent = indent + i in
               one ~indent ppf content);
@@ -231,16 +240,14 @@ let strip l =
     | [] -> acc
     | h :: t -> (
         match h.Inline.desc with
-        | Text _ | Entity _ | Raw_markup _ -> loop (h :: acc) t
+        | Text _ | Entity _ | Raw_markup _ | Math _ -> loop (h :: acc) t
         | Linebreak -> loop acc t
         | Styled (sty, content) ->
             let h =
               { h with desc = Styled (sty, List.rev @@ loop [] content) }
             in
             loop (h :: acc) t
-        | Link (_, content)
-        | InternalLink (Resolved (_, content))
-        | InternalLink (Unresolved content) ->
+        | Link (_, content) | InternalLink { content; _ } ->
             let acc = loop acc content in
             loop acc t
         | Source code ->
@@ -266,6 +273,8 @@ let raw_markup (t : Raw_markup.t) =
   match Astring.String.Ascii.lowercase target with
   | "manpage" | "troff" | "roff" -> String content
   | _ -> noop
+
+let math (s : Types.Math.t) = String s
 
 let rec source_code (s : Source.t) =
   match s with
@@ -296,10 +305,58 @@ and inline (l : Inline.t) =
       | Styled (sty, content) -> style sty (inline content) ++ inline rest
       | Link (href, content) ->
           env "UR" "UE" href (inline @@ strip content) ++ inline rest
-      | InternalLink (Resolved (_, content) | Unresolved content) ->
+      | InternalLink { content; _ } ->
           font "CI" (inline @@ strip content) ++ inline rest
       | Source content -> source_code content ++ inline rest
+      | Math s -> math s ++ inline rest
       | Raw_markup t -> raw_markup t ++ inline rest)
+
+let table pp { Table.data; align } =
+  let sep = '\t' in
+  let alignment =
+    let alignment =
+      match align with
+      | align ->
+          List.map
+            (function
+              (* Since we are enclosing cells in text blocks, the alignment has
+                 no effect on the content of a sufficiently big cell, for some
+                 reason... (see the markup test in generators)
+
+                 One solution would be to use the [m] column specifier to apply
+                 a macro to the text blocks of the columns. Those macros would
+                 be [lj], [ce] or [rj], which define alignment. However, this
+                 breaks both the alignment for small table cells, and the
+                 largeness of columns. For the records, it woulb be:
+
+                 {[
+                   | Some `Left -> "lmlj"
+                   | Some `Center -> "cmce"
+                   | Some `Right -> "rmrj"
+                   | None -> "l"
+                  ]} *)
+              | Table.Left -> "l"
+              | Center -> "c"
+              | Right -> "r"
+              | Default -> "l")
+            align
+    in
+    Align_line (String.concat "" alignment)
+  in
+  env "TS" "TE" ""
+    (str "allbox;" ++ alignment
+    ++ List.fold_left
+         (fun acc row ->
+           acc ++ vspace
+           ++
+           match row with
+           | [] -> noop
+           | (h, _) :: t ->
+               List.fold_left
+                 (fun acc (x, _) -> acc ++ str "%c" sep ++ Table_cell (pp x))
+                 (Table_cell (pp h))
+                 t)
+         noop data)
 
 let rec block (l : Block.t) =
   match l with
@@ -319,6 +376,7 @@ let rec block (l : Block.t) =
             indent 2 (bullet ++ sp ++ block b)
           in
           list ~sep:break (List.mapi f l) ++ continue rest
+      | Table t -> table block t ++ continue rest
       | Description _ ->
           let descrs, _, rest =
             Take.until l ~classify:(function
@@ -331,8 +389,9 @@ let rec block (l : Block.t) =
             indent 2 (str "@" ++ key ++ str ":" ++ sp ++ def)
           in
           list ~sep:break (List.map f descrs) ++ continue rest
-      | Source content ->
+      | Source (_, content) ->
           env "EX" "EE" "" (source_code content) ++ continue rest
+      | Math s -> math s ++ continue rest
       | Verbatim content -> env "EX" "EE" "" (str "%s" content) ++ continue rest
       | Raw_markup t -> raw_markup t ++ continue rest)
 
@@ -353,7 +412,7 @@ let next_heading, reset_heading =
   and reset () = heading_stack := [] in
   (next, reset)
 
-let heading ~nested { Heading.label = _; level; title } =
+let heading ~nested { Heading.label = _; level; title; source_anchor = _ } =
   let prefix =
     if level = 0 then noop
     else if level <= 3 then str "%s " (next_heading level)
@@ -427,7 +486,7 @@ let rec documentedSrc (l : DocumentedSrc.t) =
           let l = list ~sep:break (List.map f lines) in
           indent 2 (break ++ l) ++ break_if_nonempty rest ++ continue rest)
 
-and subpage { title = _; header = _; items; url = _ } =
+and subpage { preamble = _; items; url = _; _ } =
   let content = items in
   let surround body =
     if content = [] then sp else indent 2 (break ++ body) ++ break
@@ -446,7 +505,7 @@ and item ~nested (l : Item.t list) =
       | Heading h ->
           let h = heading ~nested h in
           vspace ++ h ++ vspace ++ item ~nested rest
-      | Declaration { attr = _; anchor = _; content; doc } ->
+      | Declaration { attr = _; anchor = _; source_anchor = _; content; doc } ->
           let decl = documentedSrc content in
           let doc =
             match doc with
@@ -455,8 +514,13 @@ and item ~nested (l : Item.t list) =
           in
           decl ++ doc ++ continue rest
       | Include
-          { attr = _; anchor = _; content = { summary; status; content }; doc }
-        ->
+          {
+            attr = _;
+            anchor = _;
+            source_anchor = _;
+            content = { summary; status; content };
+            doc;
+          } ->
           let d =
             if inline_subpage status then item ~nested content
             else
@@ -472,24 +536,30 @@ let on_sub subp =
   | `Page p -> if Link.should_inline p.Subpage.content.url then Some 1 else None
   | `Include incl -> if inline_subpage incl.Include.status then Some 0 else None
 
-let page { Page.title; header; items = i; url } =
+let page p =
   reset_heading ();
-  let header = Shift.compute ~on_sub header in
-  let i = Shift.compute ~on_sub i in
-  macro "TH" {|%s 3 "" "Odoc" "OCaml Library"|} title
+  let header =
+    Doctree.PageTitle.render_title p @ Shift.compute ~on_sub p.preamble
+  in
+  let i = Shift.compute ~on_sub p.items in
+  macro "TH" {|%s 3 "" "Odoc" "OCaml Library"|} p.url.name
   ++ macro "SH" "Name"
-  ++ str "%s" (String.concat "." @@ Link.for_printing url)
+  ++ str "%s" (String.concat "." @@ Link.for_printing p.url)
   ++ macro "SH" "Synopsis" ++ vspace ++ item ~nested:false header
   ++ macro "SH" "Documentation" ++ vspace ++ macro "nf" ""
   ++ item ~nested:false i
 
 let rec subpage subp =
   let p = subp.Subpage.content in
-  if Link.should_inline p.url then [] else [ render p ]
+  if Link.should_inline p.url then [] else [ render_page p ]
 
-and render (p : Page.t) =
-  let p = Doctree.Labels.disambiguate_page p
+and render_page (p : Page.t) =
+  let p = Doctree.Labels.disambiguate_page ~enter_subpages:true p
   and children = Utils.flatmap ~f:subpage @@ Subpages.compute p in
   let content ppf = Format.fprintf ppf "%a@." Roff.pp (page p) in
   let filename = Link.as_filename p.url in
   { Renderer.filename; content; children }
+
+let render = function
+  | Document.Page page -> [ render_page page ]
+  | Source_page _ | Asset _ -> []

@@ -226,6 +226,9 @@ val fun_maybe : ?yes:unit -> unit -> int
 val not_found : unit -> unit
 (** @raise Not_found That's all it does *)
 
+val kaboom : unit -> unit
+(** @raise Kaboom That's all it does *)
+
 val ocaml_org : string
 (** @see <http://ocaml.org/> The OCaml Web site *)
 
@@ -427,7 +430,11 @@ type variant =
 (** This comment is also for [variant]. *)
 
 (** This comment is for [poly_variant]. *)
-type poly_variant = [ `TagA | `ConstrB of int ]
+type poly_variant =
+  [ `TagA
+    (* This is a comment for [`TagA]. Disabled for compatibility
+       with 4.02. *)
+  | `ConstrB of int (* This is a comment for [`ConstrB] *) ]
 (** Wow! It was a polymorphic variant! *)
 
 (** This comment is for [full_gadt]. *)
@@ -572,23 +579,19 @@ type my_mod = (module COLLECTION)
 
 class empty_class : object end
 
-class one_method_class :
-  object
-    method go : unit
-  end
+class one_method_class : object
+  method go : unit
+end
 
-class two_method_class :
-  object
-    method one : one_method_class
+class two_method_class : object
+  method one : one_method_class
 
-    method undo : unit
-  end
+  method undo : unit
+end
 
-class ['a] param_class :
-  'a
-  -> object
-       method v : 'a
-     end
+class ['a] param_class : 'a -> object
+  method v : 'a
+end
 
 type my_unit_object = unit param_class
 
@@ -602,10 +605,9 @@ type 'a my_unit_class = unit #param_class as 'a
 (* Test resolution of dependently typed modules *)
 module Dep1 : sig
   module type S = sig
-    class c :
-      object
-        method m : int
-      end
+    class c : object
+      method m : int
+    end
   end
 
   module X : sig
@@ -719,10 +721,9 @@ module type Dep10 = Dep9(Dep8).T with type t = int
 
 module Dep11 : sig
   module type S = sig
-    class c :
-      object
-        method m : int
-      end
+    class c : object
+      method m : int
+    end
   end
 end
 
@@ -1067,3 +1068,10 @@ type new_t = ..
 type new_t += C
 
 module type TypeExtPruned = TypeExt with type t := new_t
+
+(** {1 Unresolved references} *)
+
+(** - {!Stdlib.Invalid_argument}
+    - {!Hashtbl.t}
+    - {!Set.S.empty}
+    - {!CollectionModule.InnerModuleA.foo} *)

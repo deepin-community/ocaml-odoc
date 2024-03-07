@@ -223,7 +223,22 @@ Raw HTML can be  as inline elements into sentences\.
 .nf 
 .sp 
 .in 3
-\fB8 Modules\fR
+\fB8 Math\fR
+.in 
+.sp 
+.fi 
+Math elements can be inline: \int_{-\infty}^\infty, or blocks:
+.sp 
+    % \f is defined as #1f(#2) using the macro
+    \newcommand{\f}[2]{#1f(#2)}
+    \f\relax{x} = \int_{-\infty}^\infty
+    \f\hat\xi\,e^{2 \pi i \xi x}
+    \,d\xi
+    
+.nf 
+.sp 
+.in 3
+\fB9 Modules\fR
 .in 
 .sp 
 .fi 
@@ -235,7 +250,119 @@ Raw HTML can be  as inline elements into sentences\.
 .nf 
 .sp 
 .in 3
-\fB9 Tags\fR
+\fB10 Tables\fR
+.in 
+.sp 
+.fi 
+.TS 
+allbox;lcrl.
+.sp 
+T{
+Left
+T}	T{
+Center
+T}	T{
+Right
+T}	T{
+Default
+T}
+.sp 
+T{
+A
+T}	T{
+B
+T}	T{
+C
+T}	T{
+D
+T}
+.TE 
+.sp 
+.TS 
+allbox;lcrl.
+.sp 
+T{
+Left
+T}	T{
+Center
+T}	T{
+Right
+T}	T{
+Default
+T}
+.sp 
+T{
+A
+T}	T{
+B
+T}	T{
+C
+T}	T{
+D
+T}
+.sp 
+T{
+A much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it
+T}	T{
+B much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it
+T}	T{
+C much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it
+T}	T{
+D much longer paragraph which will need to be wrapped and more content and more content and some different content and we will see what is does if we can see it
+T}
+.TE 
+.sp 
+.TS 
+allbox;ll.
+.sp 
+T{
+No
+T}	T{
+Header
+T}
+.sp 
+T{
+A
+T}	T{
+B
+T}
+.TE 
+.sp 
+.TS 
+allbox;ll.
+.sp 
+T{
+Header 1
+T}	T{
+Header 2
+T}
+.sp 
+T{
+Data 1
+T}	T{
+Data 2
+T}
+.TE 
+.sp 
+.TS 
+allbox;ll.
+.sp 
+T{
+Header 1
+T}	T{
+Data 1
+T}
+.sp 
+T{
+Header 2
+T}	T{
+Data 2
+T}
+.TE 
+.nf 
+.sp 
+.in 3
+\fB11 Tags\fR
 .in 
 .sp 
 .fi 

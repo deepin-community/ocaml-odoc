@@ -18,10 +18,10 @@ open Odoc_model
 
 type t
 
-val empty : t
+val empty : unit -> t
 
 val add_parameter :
-  Paths.Identifier.Signature.t -> Ident.t -> Names.ParameterName.t -> t -> t
+  Paths.Identifier.Signature.t -> Ident.t -> Names.ModuleName.t -> t -> t
 
 val handle_signature_type_items :
   Paths.Identifier.Signature.t -> Compat.signature -> t -> t
@@ -46,11 +46,20 @@ val find_module : t -> Ident.t -> Paths.Path.Module.t
 
 val find_module_identifier : t -> Ident.t -> Paths.Identifier.Module.t
 
+val find_parameter_identifier :
+  t -> Ident.t -> Paths.Identifier.FunctorParameter.t
+
 val find_module_type : t -> Ident.t -> Paths.Identifier.ModuleType.t
 
 val find_value_identifier : t -> Ident.t -> Paths.Identifier.Value.t
 
 val find_type : t -> Ident.t -> Paths.Identifier.Path.Type.t
+
+val find_constructor_identifier : t -> Ident.t -> Paths.Identifier.Constructor.t
+
+val find_extension_identifier : t -> Ident.t -> Paths.Identifier.Extension.t
+
+val find_exception_identifier : t -> Ident.t -> Paths.Identifier.Exception.t
 
 val find_type_identifier : t -> Ident.t -> Paths.Identifier.Type.t
 
@@ -67,3 +76,12 @@ module Fragment : sig
 
   val read_type : Longident.t -> Paths.Fragment.Type.t
 end
+
+val identifier_of_loc : t -> Location.t -> Paths.Identifier.t option
+(** Each generated id has its location stored. This allows to get back the id
+    knowing only the location. This is used to generate links to source from the
+    resolution of a shape. *)
+
+val iter_located_identifier :
+  t -> (Location.t -> Paths.Identifier.t -> unit) -> unit
+(** Iter on all stored pair [location]-[identifier]. *)

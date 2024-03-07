@@ -198,13 +198,20 @@ let rec resolved_module_path :
       | Some (`Prefixed (_p, rp)) -> rp
       | Some `Substituted -> `Substituted p
       | None -> p)
-  | `Identifier _ -> p
+  | `Gpath _ -> p
   | `Apply (p1, p2) ->
       `Apply (resolved_module_path s p1, resolved_module_path s p2)
   | `Substituted p -> `Substituted (resolved_module_path s p)
   | `Module (p, n) -> `Module (resolved_parent_path s p, n)
-  | `Alias (p1, p2) ->
-      `Alias (resolved_module_path s p1, resolved_module_path s p2)
+  | `Alias (p1, p2, p3opt) ->
+      let p2' = module_path s p2 in
+      let up2' = try Cpath.unresolve_module_path p2' with _ -> p2' in
+      let p3opt' =
+        match p3opt with
+        | Some p3 -> Some (resolved_module_path s p3)
+        | None -> None
+      in
+      `Alias (resolved_module_path s p1, up2', p3opt')
   | `Subst (p1, p2) ->
       let p1 =
         match resolved_module_type_path s p1 with
@@ -216,8 +223,7 @@ let rec resolved_module_path :
       in
       `Subst (p1, resolved_module_path s p2)
   | `Hidden p1 -> `Hidden (resolved_module_path s p1)
-  | `Canonical (p1, p2) ->
-      `Canonical (resolved_module_path s p1, module_path s p2)
+  | `Canonical (p1, p2) -> `Canonical (resolved_module_path s p1, p2)
   | `OpaqueModule m ->
       if s.unresolve_opaque_paths then raise Invalidated
       else `OpaqueModule (resolved_module_path s m)
@@ -272,16 +278,15 @@ and resolved_module_type_path :
         | `Prefixed (_p, rp) -> Not_replaced rp
         | `Renamed x -> Not_replaced (`Local x)
         | exception Not_found -> Not_replaced (`Local id))
-  | `Identifier _ -> Not_replaced p
+  | `Gpath _ -> Not_replaced p
   | `Substituted p ->
       resolved_module_type_path s p |> map_replaced (fun p -> `Substituted p)
   | `ModuleType (p, n) ->
       Not_replaced (`ModuleType (resolved_parent_path s p, n))
   | `CanonicalModuleType (mt1, mt2) -> (
-      match (resolved_module_type_path s mt1, module_type_path s mt2) with
-      | Not_replaced mt1', Not_replaced mt2' ->
-          Not_replaced (`CanonicalModuleType (mt1', mt2'))
-      | x, _ -> x)
+      match resolved_module_type_path s mt1 with
+      | Not_replaced mt1' -> Not_replaced (`CanonicalModuleType (mt1', mt2))
+      | x -> x)
   | `OpaqueModuleType m ->
       if s.unresolve_opaque_paths then raise Invalidated
       else
@@ -347,11 +352,10 @@ and resolved_type_path :
         | Some (`Renamed x) -> Not_replaced (`Local x)
         | None -> Not_replaced (`Local id))
   | `CanonicalType (t1, t2) -> (
-      match (resolved_type_path s t1, type_path s t2) with
-      | Not_replaced t1', Not_replaced t2' ->
-          Not_replaced (`CanonicalType (t1', t2'))
-      | x, _ -> x)
-  | `Identifier _ -> Not_replaced p
+      match resolved_type_path s t1 with
+      | Not_replaced t1' -> Not_replaced (`CanonicalType (t1', t2))
+      | x -> x)
+  | `Gpath _ -> Not_replaced p
   | `Substituted p ->
       resolved_type_path s p |> map_replaced (fun p -> `Substituted p)
   | `Type (p, n) -> Not_replaced (`Type (resolved_parent_path s p, n))
@@ -394,7 +398,7 @@ and resolved_class_type_path :
       | Some (`Prefixed (_p, rp)) -> rp
       | Some (`Renamed x) -> `Local x
       | None -> `Local id)
-  | `Identifier _ -> p
+  | `Gpath _ -> p
   | `Substituted p -> `Substituted (resolved_class_type_path s p)
   | `ClassType (p, n) -> `ClassType (resolved_parent_path s p, n)
   | `Class (p, n) -> `Class (resolved_parent_path s p, n)
@@ -506,27 +510,12 @@ let rec type_fragment : t -> Cfrag.type_ -> Cfrag.type_ =
 
 let option_ conv s x = match x with Some x -> Some (conv s x) | None -> None
 
-let option_bind conv s x = match x with Some x -> conv s x | None -> None
-
 let list conv s xs = List.map (conv s) xs
 
 let rec type_ s t =
   let open Component.TypeDecl in
   let representation = option_ type_decl_representation s t.representation in
-  let canonical =
-    match t.canonical with
-    | Some p -> (
-        match type_path s p with
-        | Not_replaced p' -> Some p'
-        | Replaced _ -> None)
-    | None -> None
-  in
-  {
-    equation = type_decl_equation s t.equation;
-    representation;
-    doc = t.doc;
-    canonical;
-  }
+  { t with equation = type_decl_equation s t.equation; representation }
 
 and type_decl_representation s t =
   let open Component.TypeDecl.Representation in
@@ -624,13 +613,7 @@ and module_type s t =
   let expr =
     match t.expr with Some m -> Some (module_type_expr s m) | None -> None
   in
-  let maybe_path s t =
-    match module_type_path s t with
-    | Not_replaced p -> Some p
-    | Replaced (Path p) -> Some p.p_path
-    | Replaced _ -> None
-  in
-  { expr; doc = t.doc; canonical = option_bind maybe_path s t.canonical }
+  { expr; locs = t.locs; doc = t.doc; canonical = t.canonical }
 
 and module_type_substitution s t =
   let open Component.ModuleTypeSubstitution in
@@ -676,14 +659,14 @@ and mto_module_path_invalidated : t -> Cpath.module_ -> bool =
 and mto_resolved_module_path_invalidated s p =
   match p with
   | `Local id -> List.mem id s.module_type_of_invalidating_modules
-  | `Identifier _ -> false
+  | `Gpath _ -> false
   | `Apply (p1, p2) ->
       mto_resolved_module_path_invalidated s p1
       || mto_resolved_module_path_invalidated s p2
   | `Module (`Module p, _) | `Substituted p ->
       mto_resolved_module_path_invalidated s p
   | `Module (_, _) -> false
-  | `Alias (p1, _p2) -> mto_resolved_module_path_invalidated s p1
+  | `Alias (p1, _p2, _) -> mto_resolved_module_path_invalidated s p1
   | `Subst (_p1, p2) -> mto_resolved_module_path_invalidated s p2
   | `Hidden p -> mto_resolved_module_path_invalidated s p
   | `Canonical (p1, _p2) -> mto_resolved_module_path_invalidated s p1
@@ -784,7 +767,7 @@ and include_decl s t =
 and module_ s t =
   let open Component.Module in
   let type_ = module_decl s t.type_ in
-  let canonical = option_ (fun s m1 -> module_path s m1) s t.canonical in
+  let canonical = t.canonical in
   { t with type_; canonical }
 
 and module_substitution s m =
@@ -815,7 +798,7 @@ and exception_ s e =
   let open Component.Exception in
   let res = option_ type_expr s e.res in
   let args = type_decl_constructor_arg s e.args in
-  { args; res; doc = e.doc }
+  { e with args; res }
 
 and extension_constructor s c =
   let open Component.Extension.Constructor in
@@ -879,8 +862,8 @@ and class_signature_item s =
   function
   | Method (id, m) -> Method (id, method_ s m)
   | InstanceVariable (id, i) -> InstanceVariable (id, instance_variable s i)
-  | Constraint (t1, t2) -> Constraint (type_expr s t1, type_expr s t2)
-  | Inherit e -> Inherit (class_type_expr s e)
+  | Constraint cst -> Constraint (class_constraint s cst)
+  | Inherit e -> Inherit (inherit_ s e)
   | Comment _ as y -> y
 
 and class_signature s sg =
@@ -898,6 +881,14 @@ and method_ s m =
 and instance_variable s i =
   let open Component.InstanceVariable in
   { i with type_ = type_expr s i.type_ }
+
+and class_constraint s cst =
+  let open Component.ClassSignature.Constraint in
+  { cst with left = type_expr s cst.left; right = type_expr s cst.right }
+
+and inherit_ s ih =
+  let open Component.ClassSignature.Inherit in
+  { ih with expr = class_type_expr s ih.expr }
 
 and rename_bound_idents s sg =
   let open Component.Signature in

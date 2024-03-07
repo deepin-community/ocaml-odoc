@@ -21,6 +21,27 @@ let type_path : Env.t -> Paths.Path.Type.t -> Paths.Path.Type.t =
       | Ok p' -> `Resolved Lang_of.(Path.resolved_type (empty ()) p')
       | Error _ -> p)
 
+(* and value_path : Env.t -> Paths.Path.Value.t -> Paths.Path.Value.t = *)
+(*  fun env p -> *)
+(*   match p with *)
+(*   | `Resolved _ -> p *)
+(*   | _ -> ( *)
+(*       let cp = Component.Of_Lang.(value_path (empty ()) p) in *)
+(*       match Tools.resolve_value_path env cp with *)
+(*       | Ok p' -> `Resolved Lang_of.(Path.resolved_value (empty ()) p') *)
+(*       | Error _ -> p) *)
+
+(* and constructor_path : *)
+(*     Env.t -> Paths.Path.Constructor.t -> Paths.Path.Constructor.t = *)
+(*  fun env p -> *)
+(*   match p with *)
+(*   | `Resolved _ -> p *)
+(*   | _ -> ( *)
+(*       let cp = Component.Of_Lang.(constructor_path (empty ()) p) in *)
+(*       match Tools.resolve_constructor_path env cp with *)
+(*       | Ok p' -> `Resolved Lang_of.(Path.resolved_constructor (empty ()) p') *)
+(*       | Error _ -> p) *)
+
 and module_type_path :
     Env.t -> Paths.Path.ModuleType.t -> Paths.Path.ModuleType.t =
  fun env p ->
@@ -55,7 +76,16 @@ and class_type_path : Env.t -> Paths.Path.ClassType.t -> Paths.Path.ClassType.t
 
 let rec unit env t =
   let open Compilation_unit in
-  { t with content = content env t.id t.content }
+  let source_info =
+    match t.source_info with
+    | Some si -> Some (source_info env si)
+    | None -> None
+  in
+  { t with content = content env t.id t.content; source_info }
+
+and source_info env si = { si with infos = source_info_infos env si.infos }
+
+and source_info_infos _env infos = infos
 
 and content env id =
   let open Compilation_unit in
@@ -68,7 +98,7 @@ and content env id =
 
 and value_ env parent t =
   let open Value in
-  let container = (parent :> Id.Parent.t) in
+  let container = (parent :> Id.LabelParent.t) in
   try { t with type_ = type_expression env container t.type_ }
   with _ ->
     Errors.report ~what:(`Value t.id) `Compile;
@@ -76,14 +106,14 @@ and value_ env parent t =
 
 and exception_ env parent e =
   let open Exception in
-  let container = (parent :> Id.Parent.t) in
+  let container = (parent :> Id.LabelParent.t) in
   let res = Opt.map (type_expression env container) e.res in
   let args = type_decl_constructor_argument env container e.args in
   { e with res; args }
 
 and extension env parent t =
   let open Extension in
-  let container = (parent :> Id.Parent.t) in
+  let container = (parent :> Id.LabelParent.t) in
   let constructor c =
     let open Constructor in
     {
@@ -93,17 +123,17 @@ and extension env parent t =
     }
   in
   let type_path = type_path env t.type_path in
-  let constructors = List.map constructor t.constructors in
+  let constructors = List.rev_map constructor t.constructors |> List.rev in
   { t with type_path; constructors }
 
 and class_type_expr env parent =
   let open ClassType in
-  let container = (parent :> Id.Parent.t) in
+  let container = (parent :> Id.LabelParent.t) in
   function
   | Constr (path, texps) ->
       Constr
         ( class_type_path env path,
-          List.map (type_expression env container) texps )
+          List.rev_map (type_expression env container) texps |> List.rev )
   | Signature s -> Signature (class_signature env parent s)
 
 and class_type env c =
@@ -134,36 +164,46 @@ and class_type env c =
 
 and class_signature env parent c =
   let open ClassSignature in
-  let container = (parent : Id.ClassSignature.t :> Id.Parent.t) in
+  let container = (parent : Id.ClassSignature.t :> Id.LabelParent.t) in
   let env = Env.open_class_signature c env in
   let map_item = function
     | Method m -> Method (method_ env parent m)
     | InstanceVariable i -> InstanceVariable (instance_variable env parent i)
-    | Constraint (t1, t2) ->
-        Constraint
-          (type_expression env container t1, type_expression env container t2)
-    | Inherit c -> Inherit (class_type_expr env parent c)
+    | Constraint cst -> Constraint (class_constraint env container cst)
+    | Inherit ih -> Inherit (inherit_ env parent ih)
     | Comment c -> Comment c
   in
   {
     c with
     self = Opt.map (type_expression env container) c.self;
-    items = List.map map_item c.items;
+    items = List.rev_map map_item c.items |> List.rev;
   }
 
 and method_ env parent m =
   let open Method in
-  let container = (parent :> Id.Parent.t) in
+  let container = (parent :> Id.LabelParent.t) in
   { m with type_ = type_expression env container m.type_ }
 
 and instance_variable env parent i =
   let open InstanceVariable in
-  let container = (parent :> Id.Parent.t) in
+  let container = (parent :> Id.LabelParent.t) in
   { i with type_ = type_expression env container i.type_ }
+
+and class_constraint env parent cst =
+  let open ClassSignature.Constraint in
+  {
+    cst with
+    left = type_expression env parent cst.left;
+    right = type_expression env parent cst.right;
+  }
+
+and inherit_ env parent ih =
+  let open ClassSignature.Inherit in
+  { ih with expr = class_type_expr env parent ih.expr }
 
 and class_ env parent c =
   let open Class in
-  let container = (parent :> Id.Parent.t) in
+  let container = (parent :> Id.LabelParent.t) in
   let expansion =
     match
       let open Utils.OptionMonad in
@@ -194,64 +234,112 @@ and module_substitution env m =
   { m with manifest = module_path env m.manifest }
 
 and signature_items : Env.t -> Id.Signature.t -> Signature.item list -> _ =
- fun env id s ->
+ fun initial_env id s ->
   let open Signature in
-  let items, _ =
-    List.fold_left
-      (fun (items, env) item ->
-        let std i = (i :: items, env) in
+  let rec loop items env xs =
+    match xs with
+    | [] -> (List.rev items, env)
+    | item :: rest -> (
         match item with
+        | Module (Nonrec, _) -> assert false
         | Module (r, m) ->
-            let m' = module_ env m in
-            if m == m' then (item :: items, env)
-            else
+            let add_to_env env m =
               let ty =
                 Component.Delayed.(
-                  put (fun () -> Component.Of_Lang.(module_ (empty ()) m')))
+                  put (fun () -> Component.Of_Lang.(module_ (empty ()) m)))
               in
-              let docs = [] in
-              let env' =
-                Env.update_module
-                  (m.id :> Paths.Identifier.Path.Module.t)
-                  ty docs env
-              in
-              (Module (r, m') :: items, env')
+              Env.add_module (m.id :> Paths.Identifier.Path.Module.t) ty [] env
+            in
+            let env =
+              match r with
+              | Nonrec -> assert false
+              | And | Ordinary -> env
+              | Rec ->
+                  let rec find modules rest =
+                    match rest with
+                    | Module (And, m') :: sgs -> find (m' :: modules) sgs
+                    | Module (_, _) :: _ -> modules
+                    | Comment _ :: sgs -> find modules sgs
+                    | _ -> modules
+                  in
+                  let modules = find [ m ] rest in
+                  List.fold_left add_to_env env modules
+            in
+            let m' = module_ env m in
+            let env'' =
+              match r with
+              | Nonrec -> assert false
+              | And | Rec -> env
+              | Ordinary -> add_to_env env m'
+            in
+            loop (Module (r, m') :: items) env'' rest
         | ModuleSubstitution m ->
             let env' = Env.open_module_substitution m env in
-            (ModuleSubstitution (module_substitution env m) :: items, env')
-        | Type (r, t) -> std @@ Type (r, type_decl env t)
+            loop
+              (ModuleSubstitution (module_substitution env m) :: items)
+              env' rest
+        | Type (r, t) ->
+            let add_to_env env t =
+              let ty = Component.Of_Lang.(type_decl (empty ()) t) in
+              Env.add_type t.id ty env
+            in
+            let env' =
+              match r with
+              | Rec -> assert false
+              | Ordinary ->
+                  let rec find types rest =
+                    match rest with
+                    | Type (And, t) :: sgs -> find (t :: types) sgs
+                    | Type (_, _) :: _ -> types
+                    | Comment _ :: sgs -> find types sgs
+                    | _ -> types
+                  in
+                  let types = find [ t ] rest in
+                  List.fold_left add_to_env env types
+              | And | Nonrec -> env
+            in
+            let t' = type_decl env' t in
+            let env'' =
+              match r with
+              | Rec -> assert false
+              | Ordinary | And -> env'
+              | Nonrec -> add_to_env env' t'
+            in
+            loop (Type (r, t') :: items) env'' rest
         | TypeSubstitution t ->
             let env' = Env.open_type_substitution t env in
-            (TypeSubstitution (type_decl env t) :: items, env')
+            loop (TypeSubstitution (type_decl env t) :: items) env' rest
         | ModuleType mt ->
             let m' = module_type env mt in
             let ty = Component.Of_Lang.(module_type (empty ()) m') in
-            let env' = Env.update_module_type mt.id ty env in
-            (ModuleType (module_type env mt) :: items, env')
+            let env' = Env.add_module_type mt.id ty env in
+            loop (ModuleType (module_type env mt) :: items) env' rest
         | ModuleTypeSubstitution mt ->
             let env' = Env.open_module_type_substitution mt env in
-            ( ModuleTypeSubstitution (module_type_substitution env mt) :: items,
-              env' )
-        | Value v -> std @@ Value (value_ env id v)
-        | Comment c -> std @@ Comment c
-        | TypExt t -> std @@ TypExt (extension env id t)
-        | Exception e -> std @@ Exception (exception_ env id e)
-        | Class (r, c) -> std @@ Class (r, class_ env id c)
-        | ClassType (r, c) -> std @@ ClassType (r, class_type env c)
+            loop
+              (ModuleTypeSubstitution (module_type_substitution env mt) :: items)
+              env' rest
+        | Value v -> loop (Value (value_ env id v) :: items) env rest
+        | Comment c -> loop (Comment c :: items) env rest
+        | TypExt t -> loop (TypExt (extension env id t) :: items) env rest
+        | Exception e ->
+            loop (Exception (exception_ env id e) :: items) env rest
+        | Class (r, c) ->
+            let ty = Component.Of_Lang.(class_ (empty ()) c) in
+            let env' = Env.add_class c.id ty env in
+            let c' = class_ env' id c in
+            loop (Class (r, c') :: items) env' rest
+        | ClassType (r, c) ->
+            let ty = Component.Of_Lang.(class_type (empty ()) c) in
+            let env' = Env.add_class_type c.id ty env in
+            let c' = class_type env' c in
+            loop (ClassType (r, c') :: items) env' rest
         | Include i ->
-            let i' = include_ env i in
-            if i'.expansion == i.expansion then std @@ Include i'
-            else
-              (* Expansion has changed, let's put the content into the environment *)
-              let env' = Env.close_signature i.Include.expansion.content env in
-              let env'' =
-                Env.open_signature i'.Include.expansion.content env'
-              in
-              (Include i' :: items, env'')
-        | Open o -> std @@ Open o)
-      ([], env) s
+            let i', env' = include_ env i in
+            loop (Include i' :: items) env' rest
+        | Open o -> loop (Open o :: items) env rest)
   in
-  List.rev items
+  loop [] initial_env s
 
 and module_type_substitution env mt =
   let open ModuleTypeSubstitution in
@@ -264,17 +352,12 @@ and signature : Env.t -> Id.Signature.t -> Signature.t -> _ =
  fun env id s ->
   if s.compiled then s
   else
-    let sg =
-      let env = Env.open_signature s env in
-      let items = signature_items env id s.items in
-      {
-        Signature.items;
-        compiled = true;
-        doc = s.doc (* comments are ignored while compiling *);
-      }
-    in
-    let sg' = Component.Of_Lang.(signature (empty ()) sg) in
-    Lang_of.(signature (id :> Id.Signature.t) (empty ()) sg')
+    let items, _ = signature_items env id s.items in
+    {
+      Signature.items;
+      compiled = true;
+      doc = s.doc (* comments are ignored while compiling *);
+    }
 
 and module_ : Env.t -> Module.t -> Module.t =
  fun env m ->
@@ -307,7 +390,7 @@ and module_type : Env.t -> ModuleType.t -> ModuleType.t =
   in
   { m with expr }
 
-and include_ : Env.t -> Include.t -> Include.t =
+and include_ : Env.t -> Include.t -> Include.t * Env.t =
  fun env i ->
   let open Include in
   let decl = Component.Of_Lang.(include_decl (empty ()) i.decl) in
@@ -316,10 +399,10 @@ and include_ : Env.t -> Include.t -> Include.t =
       let open Utils.ResultMonad in
       match decl with
       | Alias p ->
-          Expand_tools.aux_expansion_of_module_alias env ~strengthen:true p
-          >>= Expand_tools.assert_not_functor
+          Tools.expansion_of_module_path env ~strengthen:true p >>= fun exp ->
+          Tools.assert_not_functor exp
       | ModuleType mty ->
-          Expand_tools.aux_expansion_of_u_module_type_expr env mty
+          Tools.signature_of_u_module_type_expr ~mark_substituted:false env mty
     with
     | Error e ->
         Errors.report ~what:(`Include decl) ~tools_error:e `Expand;
@@ -341,16 +424,17 @@ and include_ : Env.t -> Include.t -> Include.t =
           | _ ->
               failwith "Expansion shouldn't be anything other than a signature"
         in
-        let content =
-          let env = Env.close_signature i.expansion.content env in
-          signature env i.parent expansion_sg
-        in
-        { shadowed = i.expansion.shadowed; content }
+        { i.expansion with content = expansion_sg }
   in
+  let expansion = get_expansion () in
+  let items, env' = signature_items env i.parent expansion.content.items in
   let expansion =
-    if i.expansion.content.compiled then i.expansion else get_expansion ()
+    {
+      expansion with
+      content = { expansion.content with items; compiled = true };
+    }
   in
-  { i with decl = include_decl env i.parent i.decl; expansion }
+  ({ i with decl = include_decl env i.parent i.decl; expansion }, env')
 
 and simple_expansion :
     Env.t ->
@@ -363,7 +447,8 @@ and simple_expansion :
   | Functor (param, sg) ->
       let env' = Env.add_functor_parameter param env in
       Functor
-        (functor_parameter env param, simple_expansion env' (`Result id) sg)
+        ( functor_parameter env param,
+          simple_expansion env' (Paths.Identifier.Mk.result id) sg )
 
 and functor_parameter : Env.t -> FunctorParameter.t -> FunctorParameter.t =
  fun env param ->
@@ -423,7 +508,7 @@ and module_type_expr_sub id ~fragment_root (sg_res, env, subs) lsub =
                   Errors.report ~what:(`With_type cfrag) `Compile;
                   (cfrag, frag)
             in
-            let eqn' = type_decl_equation env (id :> Id.Parent.t) eqn in
+            let eqn' = type_decl_equation env (id :> Id.LabelParent.t) eqn in
             let ceqn' = Component.Of_Lang.(type_equation (empty ()) eqn') in
             Tools.fragmap ~mark_substituted:true env
               (Component.ModuleType.TypeEq (cfrag', ceqn'))
@@ -466,7 +551,7 @@ and module_type_expr_sub id ~fragment_root (sg_res, env, subs) lsub =
                   Errors.report ~what:(`With_type cfrag) `Compile;
                   (cfrag, frag)
             in
-            let eqn' = type_decl_equation env (id :> Id.Parent.t) eqn in
+            let eqn' = type_decl_equation env (id :> Id.LabelParent.t) eqn in
             let ceqn' = Component.Of_Lang.(type_equation (empty ()) eqn') in
             Tools.fragmap ~mark_substituted:true env
               (Component.ModuleType.TypeSubst (cfrag', ceqn'))
@@ -597,13 +682,17 @@ and module_type_expr :
     ModuleType.expr ->
     ModuleType.expr =
  fun env id ?(expand_paths = true) expr ->
+  let open Utils.ResultMonad in
   let get_expansion cur e =
     match cur with
     | Some e -> Some (simple_expansion env id e)
     | None -> (
         let ce = Component.Of_Lang.(module_type_expr (empty ()) e) in
-        match Expand_tools.expansion_of_module_type_expr env id ce with
-        | Ok (_, _, ce) ->
+        match
+          Tools.expansion_of_module_type_expr ~mark_substituted:false env ce
+          >>= Expand_tools.handle_expansion env id
+        with
+        | Ok (_, ce) ->
             let e = Lang_of.simple_expansion (Lang_of.empty ()) id ce in
             Some (simple_expansion env id e)
         | Error `OpaqueModule -> None
@@ -629,7 +718,7 @@ and module_type_expr :
   | Functor (param, res) ->
       let param' = functor_parameter env param in
       let env' = Env.add_functor_parameter param env in
-      let res' = module_type_expr env' (`Result id) res in
+      let res' = module_type_expr env' (Paths.Identifier.Mk.result id) res in
       Functor (param', res')
   | TypeOf { t_desc; t_expansion } as e ->
       let t_expansion = get_expansion t_expansion e in
@@ -644,8 +733,8 @@ and type_decl : Env.t -> TypeDecl.t -> TypeDecl.t =
  fun env t ->
   let open TypeDecl in
   let container =
-    match t.id with
-    | `Type (parent, _) -> (parent :> Id.Parent.t)
+    match t.id.iv with
+    | `Type (parent, _) -> (parent :> Id.LabelParent.t)
     | `CoreType _ -> assert false
   in
   let equation = type_decl_equation env container t.equation in
@@ -655,7 +744,7 @@ and type_decl : Env.t -> TypeDecl.t -> TypeDecl.t =
   { t with equation; representation }
 
 and type_decl_equation :
-    Env.t -> Id.Parent.t -> TypeDecl.Equation.t -> TypeDecl.Equation.t =
+    Env.t -> Id.LabelParent.t -> TypeDecl.Equation.t -> TypeDecl.Equation.t =
  fun env parent t ->
   let open TypeDecl.Equation in
   let manifest = Opt.map (type_expression env parent) t.manifest in
@@ -669,7 +758,7 @@ and type_decl_equation :
 
 and type_decl_representation :
     Env.t ->
-    Id.Parent.t ->
+    Id.LabelParent.t ->
     TypeDecl.Representation.t ->
     TypeDecl.Representation.t =
  fun env parent r ->
@@ -690,7 +779,10 @@ and type_decl_constructor_argument env parent c =
   | Record fs -> Record (List.map (type_decl_field env parent) fs)
 
 and type_decl_constructor :
-    Env.t -> Id.Parent.t -> TypeDecl.Constructor.t -> TypeDecl.Constructor.t =
+    Env.t ->
+    Id.LabelParent.t ->
+    TypeDecl.Constructor.t ->
+    TypeDecl.Constructor.t =
  fun env parent c ->
   let open TypeDecl.Constructor in
   let args = type_decl_constructor_argument env parent c.args in
@@ -725,33 +817,41 @@ and type_expression_package env parent p =
     Tools.resolve_module_type ~mark_substituted:true ~add_canonical:true env cp
   with
   | Ok (path, mt) -> (
-      match Tools.signature_of_module_type env mt with
-      | Error e ->
-          Errors.report ~what:(`Package cp) ~tools_error:e `Lookup;
-          p
-      | Ok sg ->
-          let substitution (frag, t) =
-            let cfrag = Component.Of_Lang.(type_fragment (empty ()) frag) in
-            let frag' =
-              match
-                Tools.resolve_type_fragment env (`ModuleType path, sg) cfrag
-              with
-              | Some cfrag' ->
-                  `Resolved
-                    (Lang_of.(Path.resolved_type_fragment (empty ())) cfrag')
-              | None ->
-                  Errors.report ~what:(`Type cfrag) `Compile;
-                  frag
-            in
-            (frag', type_expression env parent t)
-          in
-          {
-            path = module_type_path env p.path;
-            substitutions = List.map substitution p.substitutions;
-          })
+      match p.substitutions with
+      | [] ->
+          (* No substitutions, don't need to try to resolve them *)
+          { path = module_type_path env p.path; substitutions = [] }
+      | _ -> (
+          match Tools.expansion_of_module_type env mt with
+          | Error e ->
+              Errors.report ~what:(`Package cp) ~tools_error:e `Lookup;
+              p
+          | Ok (Functor _) ->
+              failwith "Type expression package of functor with substitutions!"
+          | Ok (Signature sg) ->
+              let substitution (frag, t) =
+                let cfrag = Component.Of_Lang.(type_fragment (empty ()) frag) in
+                let frag' =
+                  match
+                    Tools.resolve_type_fragment env (`ModuleType path, sg) cfrag
+                  with
+                  | Some cfrag' ->
+                      `Resolved
+                        (Lang_of.(Path.resolved_type_fragment (empty ()))
+                           cfrag')
+                  | None ->
+                      Errors.report ~what:(`Type cfrag) `Compile;
+                      frag
+                in
+                (frag', type_expression env parent t)
+              in
+              {
+                path = module_type_path env p.path;
+                substitutions = List.map substitution p.substitutions;
+              }))
   | Error _ -> { p with path = Lang_of.(Path.module_type (empty ()) cp) }
 
-and type_expression : Env.t -> Id.Parent.t -> _ -> _ =
+and type_expression : Env.t -> Id.LabelParent.t -> _ -> _ =
  fun env parent texpr ->
   let open TypeExpr in
   match texpr with
@@ -770,7 +870,7 @@ and type_expression : Env.t -> Id.Parent.t -> _ -> _ =
       | Ok (_cp, `FType_removed (_, x, _eq)) ->
           (* Substitute type variables ? *)
           Lang_of.(type_expr (empty ()) parent x)
-      | Error _ -> Constr (Lang_of.(Path.type_ (empty ()) cp), ts))
+      | Error _e -> Constr (Lang_of.(Path.type_ (empty ()) cp), ts))
   | Polymorphic_variant v ->
       Polymorphic_variant (type_expression_polyvar env parent v)
   | Object o -> Object (type_expression_object env parent o)

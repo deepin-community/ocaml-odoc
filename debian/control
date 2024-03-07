@@ -8,19 +8,20 @@ Build-Depends:
  dh-ocaml (>= 1.2),
  ocaml,
  cppo,
- ocaml-dune,
+ ocaml-dune (>= 3.11.0),
+ ocaml-crunch,
+ libcamlp-streams-ocaml-dev,
  libastring-ocaml-dev,
  libfpath-ocaml-dev,
  libcmdliner-ocaml-dev,
  libresult-ocaml-dev,
  libtyxml-ocaml-dev (>= 4.3.0),
- libodoc-parser-ocaml-dev,
  libfmt-ocaml-dev,
  libre-ocaml-dev,
  libmigrate-parsetree-ocaml-dev,
  libjs-highlight.js
 Rules-Requires-Root: no
-Standards-Version: 4.6.1
+Standards-Version: 4.6.2
 Homepage: https://github.com/ocaml/odoc
 Vcs-Browser: https://salsa.debian.org/ocaml-team/ocaml-odoc
 Vcs-Git: https://salsa.debian.org/ocaml-team/ocaml-odoc.git
@@ -80,3 +81,33 @@ Description: documentation generator for OCaml (runtime libraries)
  OCaml projects using dune as a build-system.
  .
  This package contains the runtime files.
+
+Package: libodoc-parser-ocaml-dev
+Provides: ${ocaml:Provides}
+Architecture: any
+Depends:
+ ${ocaml:Depends},
+ ${shlibs:Depends},
+ ${misc:Depends}
+Recommends: ocaml-findlib
+Description: parser for OCaml documentation comments (dev files)
+ Odoc_parser is a library for parsing the contents of OCaml
+ documentation comments, formatted using 'odoc' syntax, an extension
+ of the language understood by ocamldoc.
+ .
+ This package contains development files.
+
+Package: libodoc-parser-ocaml
+Provides: ${ocaml:Provides}
+Architecture: any
+Depends:
+ ${ocaml:Depends},
+ ${shlibs:Depends},
+ ${misc:Depends}
+Suggests: ocaml-findlib
+Description: parser for OCaml documentation comments (runtime files)
+ Odoc_parser is a library for parsing the contents of OCaml
+ documentation comments, formatted using 'odoc' syntax, an extension
+ of the language understood by ocamldoc.
+ .
+ This package contains runtime files.
