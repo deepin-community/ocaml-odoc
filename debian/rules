@@ -1,8 +1,10 @@
 #!/usr/bin/make -f
 # -*- makefile -*-
 
+include /usr/share/ocaml/ocamlvars.mk
+
 %:
 	dh $@ --with ocaml --buildsystem ocaml_dune
 
 override_dh_auto_test:
-# needs ppx_expect
+# needs ocaml-crunch

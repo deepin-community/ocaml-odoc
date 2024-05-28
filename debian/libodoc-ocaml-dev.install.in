@@ -1,3 +1,4 @@
+@OCamlStdlibDir@/odoc/*opam*
 @OCamlStdlibDir@/odoc/dune-package
 @OCamlStdlibDir@/odoc/META
 @OCamlStdlibDir@/odoc/*/*.cm[aitx]

@@ -24,3 +24,4 @@ object
 end
 
 class ['a] polymorphic' : ['a] polymorphic
+

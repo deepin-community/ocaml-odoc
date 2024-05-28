@@ -1,0 +1,8 @@
+@OCamlStdlibDir@/odoc-parser/*opam*
+@OCamlStdlibDir@/odoc-parser/*dune*
+@OCamlStdlibDir@/odoc-parser/*.ml*
+@OCamlStdlibDir@/odoc-parser/*.cmi
+@OCamlStdlibDir@/odoc-parser/*.cmt*
+OPT: @OCamlStdlibDir@/odoc-parser/*.a
+OPT: @OCamlStdlibDir@/odoc-parser/*.cmx
+OPT: @OCamlStdlibDir@/odoc-parser/*.cmxa

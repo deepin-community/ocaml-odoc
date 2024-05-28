@@ -31,9 +31,9 @@ and that "hidden" modules (eg. `A__b`, rendered to `html/A__b`) are not rendered
   $ cat html/test/A/index.html
   <!DOCTYPE html>
   <html xmlns="http://www.w3.org/1999/xhtml">
-   <head><title>A (test.A)</title>
-    <link rel="stylesheet" href="../../odoc.css"/><meta charset="utf-8"/>
-    <meta name="generator" content="odoc 2.1.1"/>
+   <head><title>A (test.A)</title><meta charset="utf-8"/>
+    <link rel="stylesheet" href="../../odoc.css"/>
+    <meta name="generator" content="odoc 2.4.1"/>
     <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <script src="../../highlight.pack.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>
@@ -47,7 +47,7 @@ and that "hidden" modules (eg. `A__b`, rendered to `html/A__b`) are not rendered
     </header>
     <div class="odoc-content">
      <div class="odoc-spec">
-      <div class="spec module" id="module-B" class="anchored">
+      <div class="spec module anchored" id="module-B">
        <a href="#module-B" class="anchor"></a>
        <code>
         <span><span class="keyword">module</span> <a href="B/index.html">B</a>
@@ -69,9 +69,9 @@ and that "hidden" modules (eg. `A__b`, rendered to `html/A__b`) are not rendered
   $ cat html/test/A/B/index.html
   <!DOCTYPE html>
   <html xmlns="http://www.w3.org/1999/xhtml">
-   <head><title>B (test.A.B)</title>
-    <link rel="stylesheet" href="../../../odoc.css"/><meta charset="utf-8"/>
-    <meta name="generator" content="odoc 2.1.1"/>
+   <head><title>B (test.A.B)</title><meta charset="utf-8"/>
+    <link rel="stylesheet" href="../../../odoc.css"/>
+    <meta name="generator" content="odoc 2.4.1"/>
     <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <script src="../../../highlight.pack.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>
@@ -95,7 +95,7 @@ and that "hidden" modules (eg. `A__b`, rendered to `html/A__b`) are not rendered
        the &quot;content&quot;.
      </p>
      <div class="odoc-spec">
-      <div class="spec type" id="type-t" class="anchored">
+      <div class="spec type anchored" id="type-t">
        <a href="#type-t" class="anchor"></a>
        <code><span><span class="keyword">type</span> t</span></code>
       </div>
@@ -104,14 +104,14 @@ and that "hidden" modules (eg. `A__b`, rendered to `html/A__b`) are not rendered
    </body>
   </html>
 
-`A__b` shouldn't render:
+`A__b` shouldn't have any real content:
 
   $ cat html/test/A__b/index.html
   <!DOCTYPE html>
   <html xmlns="http://www.w3.org/1999/xhtml">
-   <head><title>A__b (test.A__b)</title>
-    <link rel="stylesheet" href="../../odoc.css"/><meta charset="utf-8"/>
-    <meta name="generator" content="odoc 2.1.1"/>
+   <head><title>A__b (test.A__b)</title><meta charset="utf-8"/>
+    <link rel="stylesheet" href="../../odoc.css"/>
+    <meta name="generator" content="odoc 2.4.1"/>
     <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <script src="../../highlight.pack.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>
@@ -122,6 +122,6 @@ and that "hidden" modules (eg. `A__b`, rendered to `html/A__b`) are not rendered
     </nav>
     <header class="odoc-preamble">
      <h1>Module <code><span>A__b</span></code></h1>
-    </header><div class="odoc-content"></div>
+    </header><div class="odoc-content"><p>This module is hidden.</p></div>
    </body>
   </html>

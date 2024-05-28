@@ -30,6 +30,12 @@ module PathTypeMap = Map.Make (struct
   let compare a b = Ident.compare (a :> Ident.any) (b :> Ident.any)
 end)
 
+module PathValueMap = Map.Make (struct
+  type t = Ident.path_value
+
+  let compare a b = Ident.compare (a :> Ident.any) (b :> Ident.any)
+end)
+
 module PathClassTypeMap = Map.Make (struct
   type t = Ident.path_class_type
 
@@ -76,9 +82,10 @@ module rec Module : sig
     | ModuleType of ModuleType.expr
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     type_ : decl;
-    canonical : Cpath.module_ option;
+    canonical : Odoc_model.Paths.Path.Module.t option;
     hidden : bool;
   }
 end =
@@ -147,6 +154,7 @@ and Extension : sig
   module Constructor : sig
     type t = {
       name : string;
+      locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
       doc : CComment.docs;
       args : TypeDecl.Constructor.argument;
       res : TypeExpr.t option;
@@ -165,6 +173,7 @@ end =
 
 and Exception : sig
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     args : TypeDecl.Constructor.argument;
     res : TypeExpr.t option;
@@ -228,8 +237,9 @@ and ModuleType : sig
     | TypeOf of typeof_t
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
-    canonical : Cpath.module_type option;
+    canonical : Odoc_model.Paths.Path.ModuleType.t option;
     expr : expr option;
   }
 end =
@@ -275,8 +285,9 @@ and TypeDecl : sig
   end
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
-    canonical : Cpath.type_ option;
+    canonical : Odoc_model.Paths.Path.Type.t option;
     equation : Equation.t;
     representation : Representation.t option;
   }
@@ -286,7 +297,12 @@ end =
 and Value : sig
   type value = Odoc_model.Lang.Value.value
 
-  type t = { doc : CComment.docs; type_ : TypeExpr.t; value : value }
+  type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
+    doc : CComment.docs;
+    type_ : TypeExpr.t;
+    value : value;
+  }
 end =
   Value
 
@@ -353,6 +369,7 @@ and Class : sig
     | Arrow of TypeExpr.label option * TypeExpr.t * decl
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -368,6 +385,7 @@ and ClassType : sig
     | Signature of ClassSignature.t
 
   type t = {
+    locs : Odoc_model.Paths.Identifier.SourceLocation.t option;
     doc : CComment.docs;
     virtual_ : bool;
     params : TypeDecl.param list;
@@ -378,11 +396,19 @@ end =
   ClassType
 
 and ClassSignature : sig
+  module Constraint : sig
+    type t = { left : TypeExpr.t; right : TypeExpr.t; doc : CComment.docs }
+  end
+
+  module Inherit : sig
+    type t = { expr : ClassType.expr; doc : CComment.docs }
+  end
+
   type item =
     | Method of Ident.method_ * Method.t
     | InstanceVariable of Ident.instance_variable * InstanceVariable.t
-    | Constraint of TypeExpr.t * TypeExpr.t
-    | Inherit of ClassType.expr
+    | Constraint of Constraint.t
+    | Inherit of Inherit.t
     | Comment of CComment.docs_or_stop
 
   type t = { self : TypeExpr.t option; items : item list; doc : CComment.docs }
@@ -457,7 +483,7 @@ and Label : sig
   type t = {
     attrs : Odoc_model.Comment.heading_attrs;
     label : Ident.label;
-    text : Odoc_model.Comment.link_content;
+    text : Odoc_model.Comment.paragraph;
     location : Odoc_model.Location_.span;
   }
 end =
@@ -470,7 +496,7 @@ module Element = struct
 
   type module_type = [ `ModuleType of Identifier.ModuleType.t * ModuleType.t ]
 
-  type type_ = [ `Type of Identifier.Type.t * TypeDecl.t ]
+  type datatype = [ `Type of Identifier.Type.t * TypeDecl.t ]
 
   type value = [ `Value of Identifier.Value.t * Value.t ]
 
@@ -480,7 +506,7 @@ module Element = struct
 
   type class_type = [ `ClassType of Identifier.ClassType.t * ClassType.t ]
 
-  type datatype = [ type_ | class_ | class_type ]
+  type type_ = [ datatype | class_ | class_type ]
 
   type signature = [ module_ | module_type ]
 
@@ -490,25 +516,32 @@ module Element = struct
   type exception_ = [ `Exception of Identifier.Exception.t * Exception.t ]
 
   type extension =
-    [ `Extension of Identifier.Extension.t * Extension.Constructor.t ]
+    [ `Extension of
+      Identifier.Extension.t * Extension.Constructor.t * Extension.t ]
+
+  type extension_decl =
+    [ `ExtensionDecl of Identifier.Extension.t * Extension.Constructor.t ]
 
   type field = [ `Field of Identifier.Field.t * TypeDecl.Field.t ]
 
   (* No component for pages yet *)
   type page = [ `Page of Identifier.Page.t * Odoc_model.Lang.Page.t ]
 
-  type label_parent = [ signature | datatype | page ]
+  type label_parent = [ signature | type_ | page ]
+
+  type fragment_type_parent = [ signature | datatype ]
 
   type any =
     [ signature
     | value
-    | type_
+    | datatype
     | label
     | class_
     | class_type
     | constructor
     | exception_
     | extension
+    | extension_decl
     | field
     | page ]
 
@@ -525,7 +558,8 @@ module Element = struct
     | `Constructor (id, _) -> (id :> t)
     | `Exception (id, _) -> (id :> t)
     | `Field (id, _) -> (id :> t)
-    | `Extension (id, _) -> (id :> t)
+    | `Extension (id, _, _) -> (id :> t)
+    | `ExtensionDecl (id, _) -> (id :> t)
     | `Page (id, _) -> (id :> t)
 end
 
@@ -586,7 +620,10 @@ module Fmt = struct
       sg.items;
     Format.fprintf ppf "@] (removed=[%a])" removed_item_list sg.removed
 
-  and option pp ppf x =
+  and option :
+      type a.
+      (Format.formatter -> a -> unit) -> Format.formatter -> a option -> unit =
+   fun pp ppf x ->
     match x with
     | Some x -> Format.fprintf ppf "Some(%a)" pp x
     | None -> Format.fprintf ppf "None"
@@ -602,10 +639,12 @@ module Fmt = struct
         | InstanceVariable (id, i) ->
             Format.fprintf ppf "@[<v 2>instance variable %a : %a@]@," Ident.fmt
               id instance_variable i
-        | Constraint (t1, t2) ->
-            Format.fprintf ppf "@[<v 2>constraint %a = %a@]@," type_expr t1
-              type_expr t2
-        | Inherit i -> Format.fprintf ppf "@[<v 2>inherit %a" class_type_expr i
+        | Constraint cst ->
+            Format.fprintf ppf "@[<v 2>constraint %a = %a@]@," type_expr
+              cst.Constraint.left type_expr cst.right
+        | Inherit i ->
+            Format.fprintf ppf "@[<v 2>inherit %a" class_type_expr
+              i.Inherit.expr
         | Comment _ -> ())
       sg.items
 
@@ -687,7 +726,10 @@ module Fmt = struct
     | Alias (p, _) -> Format.fprintf ppf "= %a" module_path p
     | ModuleType mt -> Format.fprintf ppf ": %a" module_type_expr mt
 
-  and module_ ppf m = Format.fprintf ppf "%a" module_decl m.type_
+  and module_ ppf m =
+    Format.fprintf ppf "%a (canonical=%a)" module_decl m.type_
+      (option model_path)
+      (m.canonical :> Odoc_model.Paths.Path.t option)
 
   and simple_expansion ppf (m : ModuleType.simple_expansion) =
     match m with
@@ -894,24 +936,23 @@ module Fmt = struct
     | `Apply (p1, p2) ->
         Format.fprintf ppf "%a(%a)" resolved_module_path p1 resolved_module_path
           p2
-    | `Identifier p ->
-        Format.fprintf ppf "%a" model_identifier
-          (p :> Odoc_model.Paths.Identifier.t)
+    | `Gpath p ->
+        Format.fprintf ppf "%a" model_resolved_path
+          (p :> Odoc_model.Paths.Path.Resolved.t)
     | `Substituted p ->
         Format.fprintf ppf "substituted(%a)" resolved_module_path p
     | `Module (p, m) ->
         Format.fprintf ppf "%a.%s" resolved_parent_path p
           (Odoc_model.Names.ModuleName.to_string m)
-    | `Alias (p1, p2) ->
-        Format.fprintf ppf "alias(%a,%a)" resolved_module_path p1
-          resolved_module_path p2
+    | `Alias (p1, p2, _) ->
+        Format.fprintf ppf "alias(%a,%a)" resolved_module_path p1 module_path p2
     | `Subst (p1, p2) ->
         Format.fprintf ppf "subst(%a,%a)" resolved_module_type_path p1
           resolved_module_path p2
     | `Hidden p1 -> Format.fprintf ppf "hidden(%a)" resolved_module_path p1
     | `Canonical (p1, p2) ->
-        Format.fprintf ppf "canonical(%a,%a)" resolved_module_path p1
-          module_path p2
+        Format.fprintf ppf "canonical(%a,%a)" resolved_module_path p1 model_path
+          (p2 :> Odoc_model.Paths.Path.t)
     | `OpaqueModule m ->
         Format.fprintf ppf "opaquemodule(%a)" resolved_module_path m
 
@@ -938,9 +979,9 @@ module Fmt = struct
    fun ppf p ->
     match p with
     | `Local id -> Format.fprintf ppf "%a" Ident.fmt id
-    | `Identifier id ->
-        Format.fprintf ppf "%a" model_identifier
-          (id :> Odoc_model.Paths.Identifier.t)
+    | `Gpath p ->
+        Format.fprintf ppf "%a" model_resolved_path
+          (p :> Odoc_model.Paths.Path.Resolved.t)
     | `Substituted x ->
         Format.fprintf ppf "substituted(%a)" resolved_module_type_path x
     | `ModuleType (p, m) ->
@@ -948,7 +989,8 @@ module Fmt = struct
           (ModuleTypeName.to_string m)
     | `CanonicalModuleType (m1, m2) ->
         Format.fprintf ppf "canonicalt(%a,%a)" resolved_module_type_path m1
-          module_type_path m2
+          model_path
+          (m2 :> Odoc_model.Paths.Path.t)
     | `OpaqueModuleType m ->
         Format.fprintf ppf "opaquemoduletype(%a)" resolved_module_type_path m
     | `AliasModuleType (mt1, mt2) ->
@@ -976,14 +1018,14 @@ module Fmt = struct
    fun ppf p ->
     match p with
     | `Local id -> Format.fprintf ppf "%a" Ident.fmt id
-    | `Identifier id ->
-        Format.fprintf ppf "%a" model_identifier
-          (id :> Odoc_model.Paths.Identifier.t)
+    | `Gpath p ->
+        Format.fprintf ppf "%a" model_resolved_path
+          (p :> Odoc_model.Paths.Path.Resolved.t)
     | `Substituted x ->
         Format.fprintf ppf "substituted(%a)" resolved_type_path x
     | `CanonicalType (t1, t2) ->
-        Format.fprintf ppf "canonicalty(%a,%a)" resolved_type_path t1 type_path
-          t2
+        Format.fprintf ppf "canonicalty(%a,%a)" resolved_type_path t1 model_path
+          (t2 :> Odoc_model.Paths.Path.t)
     | `Class (p, t) ->
         Format.fprintf ppf "%a.%s" resolved_parent_path p
           (Odoc_model.Names.ClassName.to_string t)
@@ -993,6 +1035,39 @@ module Fmt = struct
     | `Type (p, t) ->
         Format.fprintf ppf "%a.%s" resolved_parent_path p
           (Odoc_model.Names.TypeName.to_string t)
+
+  and resolved_datatype_path :
+      Format.formatter -> Cpath.Resolved.datatype -> unit =
+   fun ppf p ->
+    match p with
+    | `Local id -> Format.fprintf ppf "%a" Ident.fmt id
+    | `Gpath p ->
+        Format.fprintf ppf "%a" model_resolved_path
+          (p :> Odoc_model.Paths.Path.Resolved.t)
+    | `Substituted x ->
+        Format.fprintf ppf "substituted(%a)" resolved_datatype_path x
+    | `CanonicalDataType (t1, t2) ->
+        Format.fprintf ppf "canonicalty(%a,%a)" resolved_datatype_path t1
+          model_path
+          (t2 :> Odoc_model.Paths.Path.t)
+    | `Type (p, t) ->
+        Format.fprintf ppf "%a.%s" resolved_parent_path p
+          (Odoc_model.Names.TypeName.to_string t)
+
+  and resolved_value_path : Format.formatter -> Cpath.Resolved.value -> unit =
+   fun ppf p ->
+    match p with
+    | `Value (p, t) ->
+        Format.fprintf ppf "%a.%s" resolved_parent_path p
+          (Odoc_model.Names.ValueName.to_string t)
+
+  and resolved_constructor_path :
+      Format.formatter -> Cpath.Resolved.constructor -> unit =
+   fun ppf p ->
+    match p with
+    | `Constructor (p, t) ->
+        Format.fprintf ppf "%a.%s" resolved_datatype_path p
+          (Odoc_model.Names.ConstructorName.to_string t)
 
   and resolved_parent_path : Format.formatter -> Cpath.Resolved.parent -> unit =
    fun ppf p ->
@@ -1022,14 +1097,47 @@ module Fmt = struct
         Format.fprintf ppf "%a.%s" resolved_parent_path p
           (Odoc_model.Names.TypeName.to_string t)
 
+  and datatype_path : Format.formatter -> Cpath.datatype -> unit =
+   fun ppf p ->
+    match p with
+    | `Resolved r -> Format.fprintf ppf "r(%a)" resolved_datatype_path r
+    | `Identifier (id, b) ->
+        Format.fprintf ppf "identifier(%a, %b)" model_identifier
+          (id :> Odoc_model.Paths.Identifier.t)
+          b
+    | `Local (id, b) -> Format.fprintf ppf "local(%a,%b)" Ident.fmt id b
+    | `Substituted s -> Format.fprintf ppf "substituted(%a)" datatype_path s
+    | `Dot (m, s) -> Format.fprintf ppf "%a.%s" module_path m s
+    | `Type (p, t) ->
+        Format.fprintf ppf "%a.%s" resolved_parent_path p
+          (Odoc_model.Names.TypeName.to_string t)
+
+  and value_path : Format.formatter -> Cpath.value -> unit =
+   fun ppf p ->
+    match p with
+    | `Resolved r -> Format.fprintf ppf "r(%a)" resolved_value_path r
+    | `Dot (m, s) -> Format.fprintf ppf "%a.%s" module_path m s
+    | `Value (p, t) ->
+        Format.fprintf ppf "%a.%s" resolved_parent_path p
+          (Odoc_model.Names.ValueName.to_string t)
+
+  and constructor_path : Format.formatter -> Cpath.constructor -> unit =
+   fun ppf p ->
+    match p with
+    | `Resolved r -> Format.fprintf ppf "r(%a)" resolved_constructor_path r
+    | `Dot (m, s) -> Format.fprintf ppf "%a.%s" datatype_path m s
+    | `Constructor (p, t) ->
+        Format.fprintf ppf "%a.%s" resolved_datatype_path p
+          (Odoc_model.Names.ConstructorName.to_string t)
+
   and resolved_class_type_path :
       Format.formatter -> Cpath.Resolved.class_type -> unit =
    fun ppf p ->
     match p with
     | `Local id -> Format.fprintf ppf "%a" Ident.fmt id
-    | `Identifier id ->
-        Format.fprintf ppf "%a" model_identifier
-          (id :> Odoc_model.Paths.Identifier.t)
+    | `Gpath p ->
+        Format.fprintf ppf "%a" model_resolved_path
+          (p :> Odoc_model.Paths.Path.Resolved.t)
     | `Substituted s ->
         Format.fprintf ppf "substituted(%a)" resolved_class_type_path s
     | `Class (p, t) ->
@@ -1095,11 +1203,19 @@ module Fmt = struct
         Format.fprintf ppf "%a.%s" model_resolved_path
           (parent :> t)
           (Odoc_model.Names.TypeName.to_string name)
-    | `Alias (path, realpath) ->
+    | `Constructor (parent, name) ->
+        Format.fprintf ppf "%a.%s" model_resolved_path
+          (parent :> t)
+          (Odoc_model.Names.ConstructorName.to_string name)
+    | `Value (parent, name) ->
+        Format.fprintf ppf "%a.%s" model_resolved_path
+          (parent :> t)
+          (Odoc_model.Names.ValueName.to_string name)
+    | `Alias (dest, src) ->
         Format.fprintf ppf "alias(%a,%a)" model_resolved_path
-          (path :> t)
-          model_resolved_path
-          (realpath :> t)
+          (dest :> t)
+          model_path
+          (src :> Odoc_model.Paths.Path.t)
     | `AliasModuleType (path, realpath) ->
         Format.fprintf ppf "aliasmoduletype(%a,%a)" model_resolved_path
           (path :> t)
@@ -1122,6 +1238,11 @@ module Fmt = struct
           (t2 :> Odoc_model.Paths.Path.t)
     | `CanonicalType (t1, t2) ->
         Format.fprintf ppf "canonicalty(%a,%a)" model_resolved_path
+          (t1 :> t)
+          model_path
+          (t2 :> Odoc_model.Paths.Path.t)
+    | `CanonicalDataType (t1, t2) ->
+        Format.fprintf ppf "canonicaldaty(%a,%a)" model_resolved_path
           (t1 :> t)
           model_path
           (t2 :> Odoc_model.Paths.Path.t)
@@ -1150,7 +1271,7 @@ module Fmt = struct
         Format.fprintf ppf "opaquemoduletype(%a)" model_resolved_path (m :> t)
 
   and model_identifier ppf (p : Odoc_model.Paths.Identifier.t) =
-    match p with
+    match p.iv with
     | `Root (_, unit_name) ->
         Format.fprintf ppf "(root %s)"
           (Odoc_model.Names.ModuleName.to_string unit_name)
@@ -1169,7 +1290,7 @@ module Fmt = struct
     | `Parameter (parent, name) ->
         Format.fprintf ppf "(param %a %s)" model_identifier
           (parent :> Odoc_model.Paths.Identifier.t)
-          (Odoc_model.Names.ParameterName.to_string name)
+          (Odoc_model.Names.ModuleName.to_string name)
     | `Result parent ->
         Format.fprintf ppf "%a.result" model_identifier
           (parent :> Odoc_model.Paths.Identifier.t)
@@ -1217,8 +1338,31 @@ module Fmt = struct
         Format.fprintf ppf "%a.%s" model_identifier
           (p :> Odoc_model.Paths.Identifier.t)
           (ExtensionName.to_string name)
+    | `ExtensionDecl (p, _, name) ->
+        Format.fprintf ppf "%a.%s" model_identifier
+          (p :> Odoc_model.Paths.Identifier.t)
+          (ExtensionName.to_string name)
     | `Page (_, name) | `LeafPage (_, name) ->
         Format.fprintf ppf "%s" (PageName.to_string name)
+    | `SourcePage (p, name) | `SourceDir (p, name) ->
+        Format.fprintf ppf "%a/%s" model_identifier
+          (p :> Odoc_model.Paths.Identifier.t)
+          name
+    | `SourceLocation (p, def) ->
+        Format.fprintf ppf "%a#%s" model_identifier
+          (p :> Odoc_model.Paths.Identifier.t)
+          (DefName.to_string def)
+    | `SourceLocationInternal (p, def) ->
+        Format.fprintf ppf "%a#%s" model_identifier
+          (p :> Odoc_model.Paths.Identifier.t)
+          (LocalName.to_string def)
+    | `SourceLocationMod p ->
+        Format.fprintf ppf "%a#" model_identifier
+          (p :> Odoc_model.Paths.Identifier.t)
+    | `AssetFile (p, name) ->
+        Format.fprintf ppf "%a/%s" model_identifier
+          (p :> Odoc_model.Paths.Identifier.t)
+          name
 
   and model_fragment ppf (f : Odoc_model.Paths.Fragment.t) =
     match f with
@@ -1364,6 +1508,10 @@ module Fmt = struct
         Format.fprintf ppf "%a.%s" model_resolved_reference
           (parent :> t)
           (ExtensionName.to_string name)
+    | `ExtensionDecl (parent, name, _) ->
+        Format.fprintf ppf "%a.%s" model_resolved_reference
+          (parent :> t)
+          (ExtensionName.to_string name)
     | `Exception (parent, name) ->
         Format.fprintf ppf "%a.%s" model_resolved_reference
           (parent :> t)
@@ -1398,11 +1546,6 @@ module Fmt = struct
           (x :> Odoc_model.Paths.Path.Resolved.t)
           model_resolved_reference
           (y :> Odoc_model.Paths.Reference.Resolved.t)
-    | `Canonical (x, y) ->
-        Format.fprintf ppf "canonical(%a,%a)" model_resolved_reference
-          (x :> t)
-          model_reference
-          (y :> Odoc_model.Paths.Reference.t)
     | `Label (parent, name) ->
         Format.fprintf ppf "%a.%s" model_resolved_reference
           (parent :> t)
@@ -1436,6 +1579,10 @@ module Fmt = struct
           (parent :> t)
           (FieldName.to_string name)
     | `Extension (parent, name) ->
+        Format.fprintf ppf "%a.%s" model_reference
+          (parent :> t)
+          (ExtensionName.to_string name)
+    | `ExtensionDecl (parent, name) ->
         Format.fprintf ppf "%a.%s" model_reference
           (parent :> t)
           (ExtensionName.to_string name)
@@ -1482,85 +1629,52 @@ module LocalIdents = struct
       except within them, so we only do that on demand. *)
 
   type t = {
-    modules : Paths.Identifier.Sets.Module.t;
-    module_types : Paths.Identifier.Sets.ModuleType.t;
-    types : Paths.Identifier.Sets.Type.t;
-    classes : Paths.Identifier.Sets.Class.t;
-    class_types : Paths.Identifier.Sets.ClassType.t;
+    modules : Paths.Identifier.Module.t list;
+    module_types : Paths.Identifier.ModuleType.t list;
+    types : Paths.Identifier.Type.t list;
+    classes : Paths.Identifier.Class.t list;
+    class_types : Paths.Identifier.ClassType.t list;
   }
 
   let empty =
-    let open Paths.Identifier.Sets in
     {
-      modules = Module.empty;
-      module_types = ModuleType.empty;
-      types = Type.empty;
-      classes = Class.empty;
-      class_types = ClassType.empty;
+      modules = [];
+      module_types = [];
+      types = [];
+      classes = [];
+      class_types = [];
     }
 
   open Lang
 
   let rec signature_items s ids =
-    let open Paths in
     let open Signature in
-    List.fold_right
-      (fun c ids ->
+    List.fold_left
+      (fun ids c ->
         match c with
         | Module (_, { Module.id; _ }) ->
-            { ids with modules = Identifier.Sets.Module.add id ids.modules }
+            { ids with modules = id :: ids.modules }
         | ModuleType m ->
-            {
-              ids with
-              module_types =
-                Identifier.Sets.ModuleType.add m.ModuleType.id ids.module_types;
-            }
+            { ids with module_types = m.ModuleType.id :: ids.module_types }
         | ModuleSubstitution { ModuleSubstitution.id; _ } ->
-            { ids with modules = Identifier.Sets.Module.add id ids.modules }
+            { ids with modules = id :: ids.modules }
         | ModuleTypeSubstitution { ModuleTypeSubstitution.id; _ } ->
-            {
-              ids with
-              module_types = Identifier.Sets.ModuleType.add id ids.module_types;
-            }
-        | Type (_, t) ->
-            {
-              ids with
-              types = Identifier.Sets.Type.add t.TypeDecl.id ids.types;
-            }
-        | TypeSubstitution t ->
-            {
-              ids with
-              types = Identifier.Sets.Type.add t.TypeDecl.id ids.types;
-            }
-        | Class (_, c) ->
-            {
-              ids with
-              classes = Identifier.Sets.Class.add c.Class.id ids.classes;
-            }
+            { ids with module_types = id :: ids.module_types }
+        | Type (_, t) -> { ids with types = t.TypeDecl.id :: ids.types }
+        | TypeSubstitution t -> { ids with types = t.TypeDecl.id :: ids.types }
+        | Class (_, c) -> { ids with classes = c.Class.id :: ids.classes }
         | ClassType (_, c) ->
-            {
-              ids with
-              class_types =
-                Identifier.Sets.ClassType.add c.ClassType.id ids.class_types;
-            }
+            { ids with class_types = c.ClassType.id :: ids.class_types }
         | TypExt _ | Exception _ | Value _ | Comment _ -> ids
         | Include i -> signature i.Include.expansion.content ids
         | Open o -> signature o.Open.expansion ids)
-      s ids
+      ids s
 
   and signature s ids = signature_items s.items ids
 end
 
 module Of_Lang = struct
   open Odoc_model
-
-  module RM = Map.Make (struct
-    type t = Paths.Path.Resolved.Module.t
-
-    let compare x y = if x == y then 0 else compare x y
-  end)
-
-  type memos = { mutable rmodpathmemo : Cpath.Resolved.module_ RM.t }
 
   type map = {
     modules : Ident.module_ Paths.Identifier.Maps.Module.t;
@@ -1573,12 +1687,10 @@ module Of_Lang = struct
       Ident.path_class_type Paths.Identifier.Maps.Path.ClassType.t;
     classes : Ident.class_ Paths.Identifier.Maps.Class.t;
     class_types : Ident.class_type Paths.Identifier.Maps.ClassType.t;
-    memos : memos;
   }
 
   let empty () =
     let open Paths.Identifier.Maps in
-    let memos = { rmodpathmemo = RM.empty } in
     {
       modules = Module.empty;
       module_types = ModuleType.empty;
@@ -1588,92 +1700,74 @@ module Of_Lang = struct
       path_class_types = Path.ClassType.empty;
       classes = Class.empty;
       class_types = ClassType.empty;
-      memos;
     }
 
   let map_of_idents ids map =
     let open Paths.Identifier in
-    let types_new =
-      Sets.Type.fold
-        (fun i acc -> Maps.Type.add i (Ident.Of_Identifier.type_ i) acc)
-        ids.LocalIdents.types Maps.Type.empty
+    (* New types go into [types_new] and [path_types_new]
+       New classes go into [classes_new] and [path_class_types_new]
+       New class_types go into [class_types_new], [path_types_new] and [path_class_types_new] *)
+    let types_new, path_types_new =
+      List.fold_left
+        (fun (types, path_types) i ->
+          let id = Ident.Of_Identifier.type_ i in
+          ( Maps.Type.add i id types,
+            Maps.Path.Type.add
+              (i :> Path.Type.t)
+              (id :> Ident.path_type)
+              path_types ))
+        (map.types, map.path_types)
+        ids.LocalIdents.types
     in
-    let classes_new =
-      Sets.Class.fold
-        (fun i acc -> Maps.Class.add i (Ident.Of_Identifier.class_ i) acc)
-        ids.LocalIdents.classes Maps.Class.empty
+    let classes_new, path_class_types_new =
+      List.fold_left
+        (fun (classes, path_class_types) i ->
+          let id = Ident.Of_Identifier.class_ i in
+          ( Maps.Class.add i id classes,
+            Maps.Path.ClassType.add
+              (i :> Path.ClassType.t)
+              (id :> Ident.path_class_type)
+              path_class_types ))
+        (map.classes, map.path_class_types)
+        ids.LocalIdents.classes
     in
-    let class_types_new =
-      Sets.ClassType.fold
-        (fun i acc ->
-          Maps.ClassType.add i (Ident.Of_Identifier.class_type i) acc)
-        ids.LocalIdents.class_types Maps.ClassType.empty
+    let class_types_new, path_types_new, path_class_types_new =
+      List.fold_left
+        (fun (class_types, path_types, path_class_types) i ->
+          let id = Ident.Of_Identifier.class_type i in
+          ( Maps.ClassType.add i id class_types,
+            Maps.Path.Type.add
+              (i :> Path.Type.t)
+              (id :> Ident.path_type)
+              path_types,
+            Maps.Path.ClassType.add
+              (i :> Path.ClassType.t)
+              (id :> Ident.path_class_type)
+              path_class_types ))
+        (map.class_types, path_types_new, path_class_types_new)
+        ids.LocalIdents.class_types
     in
     let modules_new =
-      Sets.Module.fold
-        (fun i acc ->
+      List.fold_left
+        (fun acc i ->
           Maps.Module.add (i :> Module.t) (Ident.Of_Identifier.module_ i) acc)
-        ids.LocalIdents.modules Maps.Module.empty
+        map.modules ids.LocalIdents.modules
     in
     let module_types_new =
-      Sets.ModuleType.fold
-        (fun i acc ->
+      List.fold_left
+        (fun acc i ->
           Maps.ModuleType.add i (Ident.Of_Identifier.module_type i) acc)
-        ids.LocalIdents.module_types Maps.ModuleType.empty
+        map.module_types ids.LocalIdents.module_types
     in
-    let path_class_types_new =
-      Maps.Path.ClassType.empty
-      |> Maps.ClassType.fold
-           (fun key v acc ->
-             Maps.Path.ClassType.add
-               (key :> Path.ClassType.t)
-               (v :> Ident.path_class_type)
-               acc)
-           class_types_new
-      |> Maps.Class.fold
-           (fun key v acc ->
-             Maps.Path.ClassType.add
-               (key :> Path.ClassType.t)
-               (v :> Ident.path_class_type)
-               acc)
-           classes_new
-    in
-    let path_types_new =
-      Maps.Path.Type.empty
-      |> Maps.Path.ClassType.fold
-           (fun key v acc ->
-             Maps.Path.Type.add (key :> Path.Type.t) (v :> Ident.path_type) acc)
-           path_class_types_new
-      |> Maps.Type.fold
-           (fun key v acc ->
-             Maps.Path.Type.add (key :> Path.Type.t) (v :> Ident.path_type) acc)
-           types_new
-    in
-    let merge_fn _k v1 v2 =
-      match (v1, v2) with
-      | _, Some x -> Some x
-      | None, None -> None
-      | Some x, None -> Some x
-    in
-    let modules = Maps.Module.merge merge_fn modules_new map.modules in
-    let module_types =
-      Maps.ModuleType.merge merge_fn module_types_new map.module_types
-    in
+    let modules = modules_new in
+    let module_types = module_types_new in
     let functor_parameters = map.functor_parameters in
-    let types = Maps.Type.merge merge_fn types_new map.types in
-    let classes = Maps.Class.merge merge_fn classes_new map.classes in
-    let class_types =
-      Maps.ClassType.merge merge_fn class_types_new map.class_types
-    in
-    let path_types =
-      Maps.Path.Type.merge merge_fn path_types_new map.path_types
-    in
-    let path_class_types =
-      Maps.Path.ClassType.merge merge_fn path_class_types_new
-        map.path_class_types
-    in
+    let types = types_new in
+    let classes = classes_new in
+    let class_types = class_types_new in
+    let path_types = path_types_new in
+    let path_class_types = path_class_types_new in
     {
-      (empty ()) with
       modules;
       module_types;
       functor_parameters;
@@ -1694,9 +1788,12 @@ module Of_Lang = struct
 
   let find_any_module i ident_map =
     match i with
-    | #Paths.Identifier.Module.t as id ->
+    | { Odoc_model.Paths.Identifier.iv = `Root _ | `Module _; _ } as id ->
         (Maps.Module.find id ident_map.modules :> Ident.path_module)
-    | #Paths.Identifier.FunctorParameter.t as id ->
+    | {
+        Odoc_model.Paths.Identifier.iv = #Paths.Identifier.FunctorParameter.t_pv;
+        _;
+      } as id ->
         (Maps.FunctorParameter.find id ident_map.functor_parameters
           :> Ident.path_module)
     | _ -> raise Not_found
@@ -1704,24 +1801,20 @@ module Of_Lang = struct
   let rec resolved_module_path :
       _ -> Odoc_model.Paths.Path.Resolved.Module.t -> Cpath.Resolved.module_ =
    fun ident_map p ->
-    let f () =
-      let recurse p = resolved_module_path ident_map p in
-      match p with
-      | `Identifier i -> identifier find_any_module ident_map i
-      | `Module (p, name) -> `Module (`Module (recurse p), name)
-      | `Apply (p1, p2) -> `Apply (recurse p1, recurse p2)
-      | `Alias (p1, p2) -> `Alias (recurse p1, recurse p2)
-      | `Subst (p1, p2) ->
-          `Subst (resolved_module_type_path ident_map p1, recurse p2)
-      | `Canonical (p1, p2) -> `Canonical (recurse p1, module_path ident_map p2)
-      | `Hidden p1 -> `Hidden (recurse p1)
-      | `OpaqueModule m -> `OpaqueModule (recurse m)
-    in
-    try RM.find p ident_map.memos.rmodpathmemo
-    with Not_found ->
-      let res = f () in
-      ident_map.memos.rmodpathmemo <- RM.add p res ident_map.memos.rmodpathmemo;
-      res
+    let recurse = resolved_module_path ident_map in
+    match p with
+    | `Identifier i -> (
+        match identifier find_any_module ident_map i with
+        | `Local l -> `Local l
+        | `Identifier _ -> `Gpath p)
+    | `Module (p, name) -> `Module (`Module (recurse p), name)
+    | `Apply (p1, p2) -> `Apply (recurse p1, recurse p2)
+    | `Alias (p1, p2) -> `Alias (recurse p1, module_path ident_map p2, None)
+    | `Subst (p1, p2) ->
+        `Subst (resolved_module_type_path ident_map p1, recurse p2)
+    | `Canonical (p1, p2) -> `Canonical (recurse p1, p2)
+    | `Hidden p1 -> `Hidden (recurse p1)
+    | `OpaqueModule m -> `OpaqueModule (recurse m)
 
   and resolved_module_type_path :
       _ ->
@@ -1729,12 +1822,14 @@ module Of_Lang = struct
       Cpath.Resolved.module_type =
    fun ident_map p ->
     match p with
-    | `Identifier i -> identifier Maps.ModuleType.find ident_map.module_types i
+    | `Identifier i -> (
+        match identifier Maps.ModuleType.find ident_map.module_types i with
+        | `Local l -> `Local l
+        | `Identifier _ -> `Gpath p)
     | `ModuleType (p, name) ->
         `ModuleType (`Module (resolved_module_path ident_map p), name)
     | `CanonicalModuleType (p1, p2) ->
-        `CanonicalModuleType
-          (resolved_module_type_path ident_map p1, module_type_path ident_map p2)
+        `CanonicalModuleType (resolved_module_type_path ident_map p1, p2)
     | `OpaqueModuleType m ->
         `OpaqueModuleType (resolved_module_type_path ident_map m)
     | `AliasModuleType (m1, m2) ->
@@ -1750,14 +1845,42 @@ module Of_Lang = struct
       _ -> Odoc_model.Paths.Path.Resolved.Type.t -> Cpath.Resolved.type_ =
    fun ident_map p ->
     match p with
-    | `Identifier i -> identifier Maps.Path.Type.find ident_map.path_types i
+    | `Identifier i -> (
+        match identifier Maps.Path.Type.find ident_map.path_types i with
+        | `Local l -> `Local l
+        | `Identifier _ -> `Gpath p)
     | `CanonicalType (p1, p2) ->
-        `CanonicalType (resolved_type_path ident_map p1, type_path ident_map p2)
+        `CanonicalType (resolved_type_path ident_map p1, p2)
     | `Type (p, name) -> `Type (`Module (resolved_module_path ident_map p), name)
     | `Class (p, name) ->
         `Class (`Module (resolved_module_path ident_map p), name)
     | `ClassType (p, name) ->
         `ClassType (`Module (resolved_module_path ident_map p), name)
+
+  and resolved_datatype_path :
+      _ -> Odoc_model.Paths.Path.Resolved.DataType.t -> Cpath.Resolved.datatype
+      =
+   fun ident_map p ->
+    match p with
+    | `Identifier i -> (
+        match identifier Maps.Type.find ident_map.types i with
+        | `Local l -> `Local l
+        | `Identifier _ -> `Gpath p)
+    | `CanonicalDataType (p1, p2) ->
+        `CanonicalDataType (resolved_datatype_path ident_map p1, p2)
+    | `Type (p, name) -> `Type (`Module (resolved_module_path ident_map p), name)
+
+  and resolved_value_path :
+      _ -> Odoc_model.Paths.Path.Resolved.Value.t -> Cpath.Resolved.value =
+   fun ident_map (`Value (p, name)) ->
+    `Value (`Module (resolved_module_path ident_map p), name)
+
+  and resolved_constructor_path :
+      _ ->
+      Odoc_model.Paths.Path.Resolved.Constructor.t ->
+      Cpath.Resolved.constructor =
+   fun ident_map (`Constructor (p, name)) ->
+    `Constructor (resolved_datatype_path ident_map p, name)
 
   and resolved_class_type_path :
       _ ->
@@ -1765,8 +1888,12 @@ module Of_Lang = struct
       Cpath.Resolved.class_type =
    fun ident_map p ->
     match p with
-    | `Identifier i ->
-        identifier Maps.Path.ClassType.find ident_map.path_class_types i
+    | `Identifier i -> (
+        match
+          identifier Maps.Path.ClassType.find ident_map.path_class_types i
+        with
+        | `Local l -> `Local l
+        | `Identifier _ -> `Gpath p)
     | `Class (p, name) ->
         `Class (`Module (resolved_module_path ident_map p), name)
     | `ClassType (p, name) ->
@@ -1806,6 +1933,29 @@ module Of_Lang = struct
         | `Identifier i -> `Identifier (i, b)
         | `Local i -> `Local (i, b))
     | `Dot (path', x) -> `Dot (module_path ident_map path', x)
+
+  and value_path : _ -> Odoc_model.Paths.Path.Value.t -> Cpath.value =
+   fun ident_map p ->
+    match p with
+    | `Resolved r -> `Resolved (resolved_value_path ident_map r)
+    | `Dot (path', x) -> `Dot (module_path ident_map path', x)
+
+  and datatype : _ -> Odoc_model.Paths.Path.DataType.t -> Cpath.datatype =
+   fun ident_map p ->
+    match p with
+    | `Resolved r -> `Resolved (resolved_datatype_path ident_map r)
+    | `Identifier (i, b) -> (
+        match identifier Maps.Type.find ident_map.types i with
+        | `Identifier i -> `Identifier (i, b)
+        | `Local i -> `Local (i, b))
+    | `Dot (path', x) -> `Dot (module_path ident_map path', x)
+
+  and constructor_path :
+      _ -> Odoc_model.Paths.Path.Constructor.t -> Cpath.constructor =
+   fun ident_map p ->
+    match p with
+    | `Resolved r -> `Resolved (resolved_constructor_path ident_map r)
+    | `Dot (path', x) -> `Dot (datatype ident_map path', x)
 
   and class_type_path :
       _ -> Odoc_model.Paths.Path.ClassType.t -> Cpath.class_type =
@@ -1898,8 +2048,9 @@ module Of_Lang = struct
   let rec type_decl ident_map ty =
     let open Odoc_model.Lang.TypeDecl in
     {
-      TypeDecl.doc = docs ident_map ty.doc;
-      canonical = Opt.map (type_path ident_map) ty.canonical;
+      TypeDecl.locs = ty.locs;
+      doc = docs ident_map ty.doc;
+      canonical = ty.canonical;
       equation = type_equation ident_map ty.equation;
       representation =
         Opt.map (type_decl_representation ident_map) ty.representation;
@@ -2023,21 +2174,16 @@ module Of_Lang = struct
 
   and module_decl ident_map m =
     match m with
-    | Odoc_model.Lang.Module.Alias (p, e) ->
+    | Lang.Module.Alias (p, e) ->
         Module.Alias
           (module_path ident_map p, option simple_expansion ident_map e)
-    | Odoc_model.Lang.Module.ModuleType s ->
+    | Lang.Module.ModuleType s ->
         Module.ModuleType (module_type_expr ident_map s)
 
   and include_decl ident_map m =
     match m with
     | Odoc_model.Lang.Include.Alias p -> Include.Alias (module_path ident_map p)
     | ModuleType s -> ModuleType (u_module_type_expr ident_map s)
-
-  and canonical ident_map (canonical : Odoc_model.Paths.Path.Module.t option) =
-    match canonical with
-    | Some p -> Some (module_path ident_map p)
-    | None -> None
 
   and simple_expansion ident_map
       (f : Odoc_model.Lang.ModuleType.simple_expansion) :
@@ -2066,8 +2212,14 @@ module Of_Lang = struct
 
   and module_ ident_map m =
     let type_ = module_decl ident_map m.Odoc_model.Lang.Module.type_ in
-    let canonical = canonical ident_map m.Odoc_model.Lang.Module.canonical in
-    { Module.doc = docs ident_map m.doc; type_; canonical; hidden = m.hidden }
+    let canonical = m.Odoc_model.Lang.Module.canonical in
+    {
+      Module.locs = m.locs;
+      doc = docs ident_map m.doc;
+      type_;
+      canonical;
+      hidden = m.hidden;
+    }
 
   and with_module_type_substitution ident_map m =
     let open Odoc_model.Lang.ModuleType in
@@ -2117,6 +2269,7 @@ module Of_Lang = struct
     let res = Opt.map (type_expression ident_map) c.res in
     {
       Extension.Constructor.name = Paths.Identifier.name c.id;
+      locs = c.locs;
       doc = docs ident_map c.doc;
       args;
       res;
@@ -2126,7 +2279,7 @@ module Of_Lang = struct
     let open Odoc_model.Lang.Exception in
     let args = type_decl_constructor_argument ident_map e.args in
     let res = Opt.map (type_expression ident_map) e.res in
-    { Exception.doc = docs ident_map e.doc; args; res }
+    { Exception.locs = e.locs; doc = docs ident_map e.doc; args; res }
 
   and u_module_type_expr ident_map m =
     let open Odoc_model in
@@ -2209,14 +2362,15 @@ module Of_Lang = struct
       Opt.map (module_type_expr ident_map) m.Odoc_model.Lang.ModuleType.expr
     in
     {
-      ModuleType.doc = docs ident_map m.doc;
-      canonical = option module_type_path ident_map m.canonical;
+      ModuleType.locs = m.locs;
+      doc = docs ident_map m.doc;
+      canonical = m.canonical;
       expr;
     }
 
   and value ident_map v =
     let type_ = type_expression ident_map v.Lang.Value.type_ in
-    { Value.type_; doc = docs ident_map v.doc; value = v.value }
+    { Value.type_; doc = docs ident_map v.doc; value = v.value; locs = v.locs }
 
   and include_ ident_map i =
     let open Odoc_model.Lang.Include in
@@ -2236,7 +2390,8 @@ module Of_Lang = struct
     let open Odoc_model.Lang.Class in
     let expansion = Opt.map (class_signature ident_map) c.expansion in
     {
-      Class.doc = docs ident_map c.doc;
+      Class.locs = c.locs;
+      doc = docs ident_map c.doc;
       virtual_ = c.virtual_;
       params = c.params;
       type_ = class_decl ident_map c.type_;
@@ -2262,7 +2417,8 @@ module Of_Lang = struct
     let open Odoc_model.Lang.ClassType in
     let expansion = Opt.map (class_signature ident_map) t.expansion in
     {
-      ClassType.doc = docs ident_map t.doc;
+      ClassType.locs = t.locs;
+      doc = docs ident_map t.doc;
       virtual_ = t.virtual_;
       params = t.params;
       expr = class_type_expr ident_map t.expr;
@@ -2282,10 +2438,8 @@ module Of_Lang = struct
               let id = Ident.Of_Identifier.instance_variable i.id in
               let i' = instance_variable ident_map i in
               ClassSignature.InstanceVariable (id, i')
-          | Constraint (t1, t2) ->
-              Constraint
-                (type_expression ident_map t1, type_expression ident_map t2)
-          | Inherit e -> Inherit (class_type_expr ident_map e)
+          | Constraint cst -> Constraint (class_constraint ident_map cst)
+          | Inherit e -> Inherit (inherit_ ident_map e)
           | Comment c -> Comment (docs_or_stop ident_map c))
         sg.items
     in
@@ -2312,6 +2466,19 @@ module Of_Lang = struct
       type_ = type_expression ident_map i.type_;
     }
 
+  and class_constraint ident_map cst =
+    {
+      ClassSignature.Constraint.doc = docs ident_map cst.doc;
+      left = type_expression ident_map cst.left;
+      right = type_expression ident_map cst.right;
+    }
+
+  and inherit_ ident_map ih =
+    {
+      ClassSignature.Inherit.doc = docs ident_map ih.doc;
+      expr = class_type_expr ident_map ih.expr;
+    }
+
   and module_substitution ident_map (t : Odoc_model.Lang.ModuleSubstitution.t) =
     {
       ModuleSubstitution.doc = docs ident_map t.doc;
@@ -2328,12 +2495,12 @@ module Of_Lang = struct
   and module_of_module_substitution ident_map
       (t : Odoc_model.Lang.ModuleSubstitution.t) =
     let manifest = module_path ident_map t.manifest in
-    let canonical = Some manifest in
     {
-      Module.doc = docs ident_map t.doc;
+      Module.locs = None;
+      doc = docs ident_map t.doc;
       type_ = Alias (manifest, None);
-      canonical;
-      hidden = true;
+      canonical = None;
+      hidden = false;
     }
 
   and signature : _ -> Odoc_model.Lang.Signature.t -> Signature.t =
@@ -2357,62 +2524,63 @@ module Of_Lang = struct
 
   and apply_sig_map ident_map sg =
     let items =
-      List.map
+      List.rev_map
         (let open Odoc_model.Lang.Signature in
-        let open Odoc_model.Paths in
-        function
-        | Type (r, t) ->
-            let id = Identifier.Maps.Type.find t.id ident_map.types in
-            let t' = Delayed.put (fun () -> type_decl ident_map t) in
-            Signature.Type (id, r, t')
-        | TypeSubstitution t ->
-            let id = Identifier.Maps.Type.find t.id ident_map.types in
-            let t' = type_decl ident_map t in
-            Signature.TypeSubstitution (id, t')
-        | Module (r, m) ->
-            let id =
-              Identifier.Maps.Module.find
-                (m.id :> Identifier.Module.t)
-                ident_map.modules
-            in
-            let m' = Delayed.put (fun () -> module_ ident_map m) in
-            Signature.Module (id, r, m')
-        | ModuleSubstitution m ->
-            let id = Identifier.Maps.Module.find m.id ident_map.modules in
-            let m' = module_substitution ident_map m in
-            Signature.ModuleSubstitution (id, m')
-        | ModuleTypeSubstitution m ->
-            let id =
-              Identifier.Maps.ModuleType.find m.id ident_map.module_types
-            in
-            let m' = module_type_substitution ident_map m in
-            Signature.ModuleTypeSubstitution (id, m')
-        | ModuleType m ->
-            let id =
-              Identifier.Maps.ModuleType.find m.id ident_map.module_types
-            in
-            let m' = Delayed.put (fun () -> module_type ident_map m) in
-            Signature.ModuleType (id, m')
-        | Value v ->
-            let id = Ident.Of_Identifier.value v.id in
-            let v' = Delayed.put (fun () -> value ident_map v) in
-            Signature.Value (id, v')
-        | Comment c -> Comment (docs_or_stop ident_map c)
-        | TypExt e -> TypExt (extension ident_map e)
-        | Exception e ->
-            let id = Ident.Of_Identifier.exception_ e.id in
-            Exception (id, exception_ ident_map e)
-        | Class (r, c) ->
-            let id = Identifier.Maps.Class.find c.id ident_map.classes in
-            Class (id, r, class_ ident_map c)
-        | ClassType (r, c) ->
-            let id =
-              Identifier.Maps.ClassType.find c.id ident_map.class_types
-            in
-            ClassType (id, r, class_type ident_map c)
-        | Open o -> Open (open_ ident_map o)
-        | Include i -> Include (include_ ident_map i))
+         let open Odoc_model.Paths in
+         function
+         | Type (r, t) ->
+             let id = Identifier.Maps.Type.find t.id ident_map.types in
+             let t' = Delayed.put (fun () -> type_decl ident_map t) in
+             Signature.Type (id, r, t')
+         | TypeSubstitution t ->
+             let id = Identifier.Maps.Type.find t.id ident_map.types in
+             let t' = type_decl ident_map t in
+             Signature.TypeSubstitution (id, t')
+         | Module (r, m) ->
+             let id =
+               Identifier.Maps.Module.find
+                 (m.id :> Identifier.Module.t)
+                 ident_map.modules
+             in
+             let m' = Delayed.put (fun () -> module_ ident_map m) in
+             Signature.Module (id, r, m')
+         | ModuleSubstitution m ->
+             let id = Identifier.Maps.Module.find m.id ident_map.modules in
+             let m' = module_substitution ident_map m in
+             Signature.ModuleSubstitution (id, m')
+         | ModuleTypeSubstitution m ->
+             let id =
+               Identifier.Maps.ModuleType.find m.id ident_map.module_types
+             in
+             let m' = module_type_substitution ident_map m in
+             Signature.ModuleTypeSubstitution (id, m')
+         | ModuleType m ->
+             let id =
+               Identifier.Maps.ModuleType.find m.id ident_map.module_types
+             in
+             let m' = Delayed.put (fun () -> module_type ident_map m) in
+             Signature.ModuleType (id, m')
+         | Value v ->
+             let id = Ident.Of_Identifier.value v.id in
+             let v' = Delayed.put (fun () -> value ident_map v) in
+             Signature.Value (id, v')
+         | Comment c -> Comment (docs_or_stop ident_map c)
+         | TypExt e -> TypExt (extension ident_map e)
+         | Exception e ->
+             let id = Ident.Of_Identifier.exception_ e.id in
+             Exception (id, exception_ ident_map e)
+         | Class (r, c) ->
+             let id = Identifier.Maps.Class.find c.id ident_map.classes in
+             Class (id, r, class_ ident_map c)
+         | ClassType (r, c) ->
+             let id =
+               Identifier.Maps.ClassType.find c.id ident_map.class_types
+             in
+             ClassType (id, r, class_type ident_map c)
+         | Open o -> Open (open_ ident_map o)
+         | Include i -> Include (include_ ident_map i))
         sg.items
+      |> List.rev
     in
     { items; removed = []; compiled = sg.compiled; doc = docs ident_map sg.doc }
 
@@ -2436,7 +2604,8 @@ end
 
 let module_of_functor_argument (arg : FunctorParameter.parameter) =
   {
-    Module.doc = [];
+    Module.locs = None;
+    doc = [];
     type_ = ModuleType arg.expr;
     canonical = None;
     hidden = false;

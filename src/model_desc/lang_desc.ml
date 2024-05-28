@@ -16,6 +16,10 @@ let inline_status =
     | `Closed -> C0 "`Closed"
     | `Inline -> C0 "`Inline")
 
+let source_info =
+  let open Lang.Source_info in
+  Record [ F ("id", (fun t -> t.id), identifier) ]
+
 (** {3 Module} *)
 
 let rec module_decl =
@@ -34,6 +38,7 @@ and module_t =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F ("type_", (fun t -> t.type_), module_decl);
       F
@@ -102,7 +107,7 @@ and moduletype_type_of_desc =
     | ModPath x -> C ("ModPath", (x :> Paths.Path.t), path)
     | StructInclude x -> C ("StructInclude", (x :> Paths.Path.t), path))
 
-and simple_expansion =
+and simple_expansion : Lang.ModuleType.simple_expansion T.t =
   let open Lang.ModuleType in
   Variant
     (function
@@ -167,6 +172,7 @@ and moduletype_t =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F
         ( "canonical",
@@ -356,6 +362,7 @@ and typedecl_t =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F ("equation", (fun t -> t.equation), typedecl_equation);
       F
@@ -370,6 +377,7 @@ and extension_constructor =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F ("args", (fun t -> t.args), typedecl_constructor_argument);
       F ("res", (fun t -> t.res), Option typeexpr_t);
@@ -393,6 +401,7 @@ and exception_t =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F ("args", (fun t -> t.args), typedecl_constructor_argument);
       F ("res", (fun t -> t.res), Option typeexpr_t);
@@ -410,6 +419,7 @@ and value_t =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F ("type_", (fun t -> t.type_), typeexpr_t);
       F ("value", (fun t -> t.value), value_value_t);
@@ -433,6 +443,7 @@ and class_t =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F ("virtual_", (fun t -> t.virtual_), bool);
       F ("params", (fun t -> t.params), List typedecl_param);
@@ -455,6 +466,7 @@ and classtype_t =
   Record
     [
       F ("id", (fun t -> t.id), identifier);
+      F ("locs", (fun t -> t.locs), Option identifier);
       F ("doc", (fun t -> t.doc), docs);
       F ("virtual_", (fun t -> t.virtual_), bool);
       F ("params", (fun t -> t.params), List typedecl_param);
@@ -470,9 +482,12 @@ and classsignature_item =
     (function
     | Method x -> C ("Method", x, method_t)
     | InstanceVariable x -> C ("InstanceVariable", x, instancevariable_t)
-    | Constraint (x1, x2) ->
-        C ("Constraint", (x1, x2), Pair (typeexpr_t, typeexpr_t))
-    | Inherit x -> C ("Inherit", x, classtype_expr)
+    | Constraint cst ->
+        C
+          ( "Constraint",
+            (cst.left, cst.right, cst.doc),
+            Triple (typeexpr_t, typeexpr_t, docs) )
+    | Inherit ih -> C ("Inherit", (ih.expr, ih.doc), Pair (classtype_expr, docs))
     | Comment x -> C ("Comment", x, docs_or_stop))
 
 and classsignature_t =
@@ -667,6 +682,7 @@ and compilation_unit_t =
         ( "canonical",
           (fun t -> (t.canonical :> Paths.Path.t option)),
           Option path );
+      F ("sources", (fun t -> t.source_info), Option source_info);
     ]
 
 (** {3 Page} *)
@@ -679,4 +695,14 @@ and page_t =
       F ("root", (fun t -> t.root), root);
       F ("content", (fun t -> t.content), docs);
       F ("digest", (fun t -> t.digest), Digest.t);
+    ]
+
+and source_tree_page_t =
+  let open Lang.SourceTree in
+  Record
+    [
+      F ("name", (fun t -> t.name), identifier);
+      F ("root", (fun t -> t.root), root);
+      F ("digest", (fun t -> t.digest), Digest.t);
+      F ("source_children", (fun t -> t.source_children), List identifier);
     ]

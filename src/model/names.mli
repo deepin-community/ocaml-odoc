@@ -70,8 +70,6 @@ end
 
 module ModuleName : Name
 
-module ParameterName : Name
-
 module ModuleTypeName : Name
 
 module TypeName : Name
@@ -97,3 +95,7 @@ module InstanceVariableName : SimpleName
 module LabelName : SimpleName
 
 module PageName : SimpleName
+
+module DefName : SimpleName
+
+module LocalName : SimpleName

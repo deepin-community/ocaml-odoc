@@ -11,7 +11,7 @@ module Tools_error = struct
 
   type reference_kind = [ `S | `T | `C | `CT | `Page | `Cons | `Field | `Label ]
 
-  type signature_of_module_error =
+  type expansion_of_module_error =
     [ `OpaqueModule (* The module does not have an expansion *)
     | `UnresolvedForwardPath
       (* The module signature depends upon a forward path *)
@@ -27,7 +27,6 @@ module Tools_error = struct
     [ `Local of
       Env.t * Ident.path_module
       (* Internal error: Found local path during lookup *)
-    | `Unresolved_apply (* [`Apply] argument is not [`Resolved] *)
     | `Find_failure
     | (* Internal error: the module was not found in the parent signature *)
       `Lookup_failure of
@@ -73,9 +72,42 @@ module Tools_error = struct
       (* Could not find the module in the environment *)
     | `Parent of parent_lookup_error ]
 
+  and simple_datatype_lookup_error =
+    [ `LocalDataType of
+      Env.t * Ident.path_datatype
+      (* Internal error: Found local path during lookup *)
+    | `Find_failure
+      (* Internal error: the type was not found in the parent signature *)
+    | `Lookup_failureT of
+      Identifier.Path.Type.t
+      (* Could not find the module in the environment *)
+    | `Parent of parent_lookup_error ]
+
+  and simple_value_lookup_error =
+    [ `LocalValue of
+      Env.t * Ident.path_value
+      (* Internal error: Found local path during lookup *)
+    | `Find_failure
+      (* Internal error: the type was not found in the parent signature *)
+    | `Lookup_failureV of
+      Identifier.Path.Value.t
+      (* Could not find the module in the environment *)
+    | `Parent of parent_lookup_error ]
+
+  and simple_constructor_lookup_error =
+    [ `LocalConstructor of
+      Env.t * Ident.constructor
+      (* Internal error: Found local path during lookup *)
+    | `Find_failure
+      (* Internal error: the type was not found in the parent signature *)
+    | `Lookup_failureC of
+      Identifier.Path.Constructor.t
+      (* Could not find the module in the environment *)
+    | `ParentC of simple_datatype_lookup_error ]
+
   and parent_lookup_error =
     [ `Parent_sig of
-      signature_of_module_error
+      expansion_of_module_error
       (* Error found while calculating the parent signature *)
     | `Parent_module_type of
       simple_module_type_lookup_error
@@ -99,10 +131,13 @@ module Tools_error = struct
 
   type any =
     [ simple_type_lookup_error
+    | simple_value_lookup_error
+    | simple_constructor_lookup_error
+    | simple_datatype_lookup_error
     | simple_module_type_lookup_error
     | simple_module_type_expr_of_module_error
     | simple_module_lookup_error
-    | signature_of_module_error
+    | expansion_of_module_error
     | parent_lookup_error ]
 
   let pp_reference_kind fmt k =
@@ -136,7 +171,12 @@ module Tools_error = struct
     | `LocalMT (_, id) -> Format.fprintf fmt "Local id found: %a" Ident.fmt id
     | `Local (_, id) -> Format.fprintf fmt "Local id found: %a" Ident.fmt id
     | `LocalType (_, id) -> Format.fprintf fmt "Local id found: %a" Ident.fmt id
-    | `Unresolved_apply -> Format.fprintf fmt "Unresolved apply"
+    | `LocalDataType (_, id) ->
+        Format.fprintf fmt "Local id found: %a" Ident.fmt id
+    | `LocalConstructor (_, id) ->
+        Format.fprintf fmt "Local id found: %a" Ident.fmt id
+    | `LocalValue (_, id) ->
+        Format.fprintf fmt "Local id found: %a" Ident.fmt id
     | `Find_failure -> Format.fprintf fmt "Find failure"
     | `Lookup_failure m ->
         Format.fprintf fmt "Lookup failure (module): %a"
@@ -152,9 +192,18 @@ module Tools_error = struct
         Format.fprintf fmt "Lookup failure (type): %a"
           Component.Fmt.model_identifier
           (m :> Odoc_model.Paths.Identifier.t)
+    | `Lookup_failureV m ->
+        Format.fprintf fmt "Lookup failure (value): %a"
+          Component.Fmt.model_identifier
+          (m :> Odoc_model.Paths.Identifier.t)
+    | `Lookup_failureC m ->
+        Format.fprintf fmt "Lookup failure (value): %a"
+          Component.Fmt.model_identifier
+          (m :> Odoc_model.Paths.Identifier.t)
     | `ApplyNotFunctor -> Format.fprintf fmt "Apply module is not a functor"
     | `Class_replaced -> Format.fprintf fmt "Class replaced"
     | `Parent p -> pp fmt (p :> any)
+    | `ParentC p -> pp fmt (p :> any)
     | `UnexpandedTypeOf t ->
         Format.fprintf fmt "Unexpanded `module type of` expression: %a"
           Component.Fmt.module_type_type_of_desc t
@@ -189,9 +238,10 @@ let is_unexpanded_module_type_of =
     | `Local _ -> false
     | `Find_failure -> false
     | `Lookup_failure _ -> false
-    | `Unresolved_apply -> false
     | `Lookup_failure_root _ -> false
+    | `Lookup_failureC _ -> false
     | `Parent p -> inner (p :> any)
+    | `ParentC p -> inner (p :> any)
     | `Parent_sig p -> inner (p :> any)
     | `Parent_module_type p -> inner (p :> any)
     | `Parent_expr p -> inner (p :> any)
@@ -207,7 +257,11 @@ let is_unexpanded_module_type_of =
     | `UnresolvedPath (`Module (_, e)) -> inner (e :> any)
     | `UnresolvedPath (`ModuleType (_, e)) -> inner (e :> any)
     | `Lookup_failureT _ -> false
+    | `Lookup_failureV _ -> false
     | `LocalType _ -> false
+    | `LocalDataType _ -> false
+    | `LocalConstructor _ -> false
+    | `LocalValue _ -> false
     | `Class_replaced -> false
     | `OpaqueClass -> false
     | `Reference (`Parent p) -> inner (p :> any)
@@ -242,7 +296,7 @@ let rec kind_of_error : Tools_error.any -> kind option = function
       match kind_of_module_type_cpath cp with
       | None -> kind_of_error (e :> Tools_error.any)
       | x -> x)
-  | `Lookup_failure (`Root (_, name)) ->
+  | `Lookup_failure { iv = `Root (_, name); _ } ->
       Some (`Root (Names.ModuleName.to_string name))
   | `UnexpandedTypeOf type_of_desc -> kind_of_type_of_desc type_of_desc
   | `Lookup_failure_root name -> Some (`Root name)
@@ -266,7 +320,7 @@ let kind_of_error ~what = function
   | None -> (
       match what with
       | `Include (Component.Include.Alias cp) -> kind_of_module_cpath cp
-      | `Module (`Root (_, name)) ->
+      | `Module { Odoc_model.Paths.Identifier.iv = `Root (_, name); _ } ->
           Some (`Root (Names.ModuleName.to_string name))
       | _ -> None)
 
@@ -275,11 +329,13 @@ open Paths
 type what =
   [ `Functor_parameter of Identifier.FunctorParameter.t
   | `Value of Identifier.Value.t
+  | `Value_path of Cpath.value
   | `Class of Identifier.Class.t
   | `Class_type of Identifier.ClassType.t
   | `Module of Identifier.Module.t
   | `Module_type of Identifier.Signature.t
   | `Module_path of Cpath.module_
+  | `Constructor_path of Cpath.constructor
   | `Module_type_path of Cpath.module_type
   | `Module_type_U of Component.ModuleType.U.expr
   | `Include of Component.Include.decl
@@ -292,7 +348,8 @@ type what =
   | `With_type of Cfrag.type_
   | `Module_type_expr of Component.ModuleType.expr
   | `Module_type_u_expr of Component.ModuleType.U.expr
-  | `Child of Reference.t
+  | `Child_module of string
+  | `Child_page of string
   | `Reference of Reference.t ]
 
 let report ~(what : what) ?tools_error action =
@@ -330,6 +387,8 @@ let report ~(what : what) ?tools_error action =
         r "module package" module_type_path (path :> Cpath.module_type)
     | `Type cfrag -> r "type" type_fragment cfrag
     | `Type_path path -> r "type" type_path path
+    | `Value_path path -> r "value" value_path path
+    | `Constructor_path path -> r "constructor" constructor_path path
     | `Class_type_path path -> r "class_type" class_type_path path
     | `With_module frag -> r "module substitution" module_fragment frag
     | `With_module_type frag ->
@@ -339,7 +398,8 @@ let report ~(what : what) ?tools_error action =
         r "module type expression" module_type_expr cexpr
     | `Module_type_u_expr cexpr ->
         r "module type u expression" u_module_type_expr cexpr
-    | `Child rf -> r "child reference" model_reference rf
+    | `Child_module rf -> r "child module" Astring.String.pp rf
+    | `Child_page rf -> r "child page" Astring.String.pp rf
     | `Reference ref -> r "reference" model_reference ref
   in
   match kind_of_error ~what tools_error with

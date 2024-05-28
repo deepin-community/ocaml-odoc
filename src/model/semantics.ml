@@ -19,6 +19,7 @@ let describe_internal_tag = function
   | `Inline -> "@inline"
   | `Open -> "@open"
   | `Closed -> "@closed"
+  | `Hidden -> "@hidden"
 
 let warn_unexpected_tag { Location.value; location } =
   Error.raise_warning
@@ -88,6 +89,9 @@ let heading_level_should_be_lower_than_top_level :
 let page_heading_required : string -> Error.t =
   Error.filename_only "Pages (.mld files) should start with a heading."
 
+let tags_not_allowed : Location.span -> Error.t =
+  Error.make "Tags are not allowed in pages."
+
 let not_allowed :
     ?suggestion:string ->
     what:string ->
@@ -114,12 +118,17 @@ type ast_leaf_inline_element =
   [ `Space of string
   | `Word of string
   | `Code_span of string
+  | `Math_span of string
   | `Raw_markup of string option * string ]
 
 type sections_allowed = [ `All | `No_titles | `None ]
 
+type alerts =
+  [ `Tag of [ `Alert of string * string option ] ] Location_.with_location list
+
 type status = {
   sections_allowed : sections_allowed;
+  tags_allowed : bool;
   parent_of_sections : Paths.Identifier.LabelParent.t;
 }
 
@@ -128,7 +137,7 @@ let leaf_inline_element :
     Comment.leaf_inline_element with_location =
  fun element ->
   match element with
-  | { value = `Word _ | `Code_span _; _ } as element -> element
+  | { value = `Word _ | `Code_span _ | `Math_span _; _ } as element -> element
   | { value = `Space _; _ } -> Location.same element `Space
   | { value = `Raw_markup (target, s); location } -> (
       match target with
@@ -146,11 +155,7 @@ let leaf_inline_element :
       | Some target -> Location.same element (`Raw_markup (target, s)))
 
 type surrounding =
-  [ `Heading of
-    int
-    * string option
-    * Odoc_parser.Ast.inline_element Location_.with_location list
-  | `Link of
+  [ `Link of
     string * Odoc_parser.Ast.inline_element Location_.with_location list
   | `Reference of
     [ `Simple | `With_text ]
@@ -224,8 +229,20 @@ let rec nestable_block_element :
   match element with
   | { value = `Paragraph content; location } ->
       Location.at location (`Paragraph (inline_elements status content))
-  | { value = `Code_block (_, code); _ } ->
-      Location.same element (`Code_block code)
+  | { value = `Code_block { meta; delimiter = _; content; output }; location }
+    ->
+      let lang_tag =
+        match meta with
+        | Some { language = { Location.value; _ }; _ } -> Some value
+        | None -> None
+      in
+      let outputs =
+        match output with
+        | None -> None
+        | Some l -> Some (List.map (nestable_block_element status) l)
+      in
+      Location.at location (`Code_block (lang_tag, content, outputs))
+  | { value = `Math_block s; location } -> Location.at location (`Math_block s)
   | { value = `Verbatim _; _ } as element -> element
   | { value = `Modules modules; location } ->
       let modules =
@@ -246,6 +263,14 @@ let rec nestable_block_element :
   | { value = `List (kind, _syntax, items); location } ->
       `List (kind, List.map (nestable_block_elements status) items)
       |> Location.at location
+  | { value = `Table ((grid, align), (`Heavy | `Light)); location } ->
+      let data =
+        List.map
+          (List.map (fun (cell, cell_type) ->
+               (nestable_block_elements status cell, cell_type)))
+          grid
+      in
+      `Table { Comment.data; align } |> Location.at location
 
 and nestable_block_elements status elements =
   List.map (nestable_block_element status) elements
@@ -258,6 +283,10 @@ let tag :
       internal_tags_removed with_location )
     Result.result =
  fun ~location status tag ->
+  if not status.tags_allowed then
+    (* Trigger a warning but do not remove the tag. Avoid turning tags into
+       text that would render the same. *)
+    Error.raise_warning (tags_not_allowed location);
   let ok t = Result.Ok (Location.at location (`Tag t)) in
   match tag with
   | (`Author _ | `Since _ | `Version _) as tag -> ok tag
@@ -265,8 +294,17 @@ let tag :
       ok (`Deprecated (nestable_block_elements status content))
   | `Param (name, content) ->
       ok (`Param (name, nestable_block_elements status content))
-  | `Raise (name, content) ->
-      ok (`Raise (name, nestable_block_elements status content))
+  | `Raise (name, content) -> (
+      match Error.raise_warnings (Reference.parse location name) with
+      (* TODO: location for just name *)
+      | Result.Ok target ->
+          ok
+            (`Raise
+              (`Reference (target, []), nestable_block_elements status content))
+      | Result.Error error ->
+          Error.raise_warning error;
+          let placeholder = `Code_span name in
+          ok (`Raise (placeholder, nestable_block_elements status content)))
   | `Return content -> ok (`Return (nestable_block_elements status content))
   | `See (kind, target, content) ->
       ok (`See (kind, target, nestable_block_elements status content))
@@ -280,7 +318,8 @@ let tag :
 
    This must be done in the parser (i.e. early, not at HTML/other output
    generation time), so that the cross-referencer can see these anchors. *)
-let generate_heading_label : Comment.link_content -> string =
+let generate_heading_label : Comment.inline_element with_location list -> string
+    =
  fun content ->
   (* Code spans can contain spaces, so we need to replace them with hyphens. We
      also lowercase all the letters, for consistency with the rest of this
@@ -298,25 +337,38 @@ let generate_heading_label : Comment.link_content -> string =
     Bytes.unsafe_to_string result
   in
 
+  let strip_locs li = List.map (fun ele -> ele.Location.value) li in
   (* Perhaps this should be done using a [Buffer.t]; we can switch to that as
      needed. *)
   let rec scan_inline_elements anchor = function
     | [] -> anchor
     | element :: more ->
         let anchor =
-          match element.Location.value with
+          match (element : Comment.inline_element) with
           | `Space -> anchor ^ "-"
           | `Word w -> anchor ^ Astring.String.Ascii.lowercase w
-          | `Code_span c -> anchor ^ replace_spaces_with_hyphens_and_lowercase c
+          | `Code_span c | `Math_span c ->
+              anchor ^ replace_spaces_with_hyphens_and_lowercase c
           | `Raw_markup _ ->
               (* TODO Perhaps having raw markup in a section heading should be an
                  error? *)
               anchor
-          | `Styled (_, content) -> scan_inline_elements anchor content
+          | `Styled (_, content) ->
+              content |> strip_locs |> scan_inline_elements anchor
+          | `Reference (_, content) ->
+              content |> strip_locs
+              |> List.map (fun (ele : Comment.non_link_inline_element) ->
+                     (ele :> Comment.inline_element))
+              |> scan_inline_elements anchor
+          | `Link (_, content) ->
+              content |> strip_locs
+              |> List.map (fun (ele : Comment.non_link_inline_element) ->
+                     (ele :> Comment.inline_element))
+              |> scan_inline_elements anchor
         in
         scan_inline_elements anchor more
   in
-  scan_inline_elements "" content
+  content |> List.map (fun ele -> ele.Location.value) |> scan_inline_elements ""
 
 let section_heading :
     status ->
@@ -327,11 +379,7 @@ let section_heading :
  fun status ~top_heading_level location heading ->
   let (`Heading (level, label, content)) = heading in
 
-  let text =
-    non_link_inline_elements status
-      ~surrounding:(heading :> surrounding)
-      content
-  in
+  let text = inline_elements status content in
 
   let heading_label_explicit, label =
     match label with
@@ -339,7 +387,8 @@ let section_heading :
     | None -> (false, generate_heading_label text)
   in
   let label =
-    `Label (status.parent_of_sections, Names.LabelName.make_std label)
+    Paths.Identifier.Mk.label
+      (status.parent_of_sections, Names.LabelName.make_std label)
   in
 
   let mk_heading heading_level =
@@ -388,7 +437,7 @@ let section_heading :
       mk_heading level'
 
 let validate_first_page_heading status ast_element =
-  match status.parent_of_sections with
+  match status.parent_of_sections.iv with
   | `Page (_, name) | `LeafPage (_, name) -> (
       match ast_element with
       | { Location.value = `Heading (_, _, _); _ } -> ()
@@ -438,7 +487,7 @@ let top_level_block_elements status ast_elements =
   in
   let top_heading_level =
     (* Non-page documents have a generated title. *)
-    match status.parent_of_sections with
+    match status.parent_of_sections.iv with
     | `Page _ | `LeafPage _ -> None
     | _parent_with_generated_title -> Some 0
   in
@@ -450,7 +499,7 @@ let strip_internal_tags ast : internal_tags_removed with_location list * _ =
       -> (
         let next tag = loop ({ wloc with value = tag } :: tags) ast' tl in
         match tag with
-        | (`Inline | `Open | `Closed) as tag -> next tag
+        | (`Inline | `Open | `Closed | `Hidden) as tag -> next tag
         | `Canonical { Location.value = s; location = r_location } -> (
             match
               Error.raise_warnings (Reference.read_path_longident r_location s)
@@ -470,21 +519,41 @@ let strip_internal_tags ast : internal_tags_removed with_location list * _ =
   in
   loop [] [] ast
 
-let ast_to_comment ~internal_tags ~sections_allowed ~parent_of_sections ast =
-  Error.catch_warnings (fun () ->
-      let status = { sections_allowed; parent_of_sections } in
-      let ast, tags = strip_internal_tags ast in
-      ( top_level_block_elements status ast,
-        handle_internal_tags tags internal_tags ))
+(** Append alerts at the end of the comment. Tags are favoured in case of alerts of the same name. *)
+let append_alerts_to_comment alerts
+    (comment : Comment.block_element with_location list) =
+  let alerts =
+    List.filter
+      (fun alert ->
+        let (`Tag alert) = alert.Location_.value in
+        List.for_all
+          (fun elem ->
+            match (elem.Location_.value, alert) with
+            | `Tag (`Deprecated _), `Alert ("deprecated", _) -> false
+            | _ -> true)
+          comment)
+      alerts
+  in
+  comment @ (alerts : alerts :> Comment.docs)
 
-let parse_comment ~internal_tags ~sections_allowed ~containing_definition
-    ~location ~text =
+let ast_to_comment ~internal_tags ~sections_allowed ~tags_allowed
+    ~parent_of_sections ast alerts =
+  Error.catch_warnings (fun () ->
+      let status = { sections_allowed; tags_allowed; parent_of_sections } in
+      let ast, tags = strip_internal_tags ast in
+      let elts =
+        top_level_block_elements status ast |> append_alerts_to_comment alerts
+      in
+      (elts, handle_internal_tags tags internal_tags))
+
+let parse_comment ~internal_tags ~sections_allowed ~tags_allowed
+    ~containing_definition ~location ~text =
   Error.catch_warnings (fun () ->
       let ast =
         Odoc_parser.parse_comment ~location ~text |> Error.raise_parser_warnings
       in
-      ast_to_comment ~internal_tags ~sections_allowed
-        ~parent_of_sections:containing_definition ast
+      ast_to_comment ~internal_tags ~sections_allowed ~tags_allowed
+        ~parent_of_sections:containing_definition ast []
       |> Error.raise_warnings)
 
 let parse_reference text =

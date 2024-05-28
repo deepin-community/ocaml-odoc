@@ -36,7 +36,11 @@ module Names = struct
 
   let pagename = To_string PageName.to_string
 
-  let parametername = To_string ParameterName.to_string
+  let parametername = To_string ModuleName.to_string
+
+  let defname = To_string DefName.to_string
+
+  let localname = To_string LocalName.to_string
 end
 
 module General_paths = struct
@@ -60,95 +64,122 @@ module General_paths = struct
 
   let rec identifier : Paths.Identifier.t t =
     Variant
-      (function
-      | `Page (parent, name) ->
-          C
-            ( "`Page",
-              ((parent :> id_t option), name),
-              Pair (Option identifier, Names.pagename) )
-      | `LeafPage (parent, name) ->
-          C
-            ( "`LeafPage",
-              ((parent :> id_t option), name),
-              Pair (Option identifier, Names.pagename) )
-      | `Root (parent, name) ->
-          C
-            ( "`Root",
-              ((parent :> id_t option), name),
-              Pair (Option identifier, Names.modulename) )
-      | `Module (parent, name) ->
-          C
-            ( "`Module",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.modulename) )
-      | `Parameter (parent, name) ->
-          C
-            ( "`Parameter",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.parametername) )
-      | `Result r -> C ("`Result", (r :> id_t), identifier)
-      | `ModuleType (parent, name) ->
-          C
-            ( "`ModuleType",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.moduletypename) )
-      | `Class (parent, name) ->
-          C
-            ( "`Class",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.classname) )
-      | `ClassType (parent, name) ->
-          C
-            ( "`ClassType",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.classtypename) )
-      | `Type (parent, name) ->
-          C
-            ( "`Type",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.typename) )
-      | `CoreType name -> C ("`CoreType", name, Names.typename)
-      | `Constructor (parent, name) ->
-          C
-            ( "`Constructor",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.constructorname) )
-      | `Field (parent, name) ->
-          C
-            ( "`Field",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.fieldname) )
-      | `Extension (parent, name) ->
-          C
-            ( "`Extension",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.extensionname) )
-      | `Exception (parent, name) ->
-          C
-            ( "`Exception",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.exceptionname) )
-      | `CoreException name -> C ("`CoreException", name, Names.exceptionname)
-      | `Value (parent, name) ->
-          C
-            ( "`Value",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.valuename) )
-      | `Method (parent, name) ->
-          C
-            ( "`Method",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.methodname) )
-      | `InstanceVariable (parent, name) ->
-          C
-            ( "`InstanceVariable",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.instancevariablename) )
-      | `Label (parent, name) ->
-          C
-            ( "`Label",
-              ((parent :> id_t), name),
-              Pair (identifier, Names.labelname) ))
+      (fun x ->
+        match x.iv with
+        | `Page (parent, name) ->
+            C
+              ( "`Page",
+                ((parent :> id_t option), name),
+                Pair (Option identifier, Names.pagename) )
+        | `LeafPage (parent, name) ->
+            C
+              ( "`LeafPage",
+                ((parent :> id_t option), name),
+                Pair (Option identifier, Names.pagename) )
+        | `AssetFile (parent, name) ->
+            C ("`AssetFile", ((parent :> id_t), name), Pair (identifier, string))
+        | `Root (parent, name) ->
+            C
+              ( "`Root",
+                ((parent :> id_t option), name),
+                Pair (Option identifier, Names.modulename) )
+        | `Module (parent, name) ->
+            C
+              ( "`Module",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.modulename) )
+        | `Parameter (parent, name) ->
+            C
+              ( "`Parameter",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.parametername) )
+        | `Result r -> C ("`Result", (r :> id_t), identifier)
+        | `ModuleType (parent, name) ->
+            C
+              ( "`ModuleType",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.moduletypename) )
+        | `Class (parent, name) ->
+            C
+              ( "`Class",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.classname) )
+        | `ClassType (parent, name) ->
+            C
+              ( "`ClassType",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.classtypename) )
+        | `Type (parent, name) ->
+            C
+              ( "`Type",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.typename) )
+        | `CoreType name -> C ("`CoreType", name, Names.typename)
+        | `Constructor (parent, name) ->
+            C
+              ( "`Constructor",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.constructorname) )
+        | `Field (parent, name) ->
+            C
+              ( "`Field",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.fieldname) )
+        | `Extension (parent, name) ->
+            C
+              ( "`Extension",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.extensionname) )
+        | `ExtensionDecl (parent, name, name') ->
+            C
+              ( "`ExtensionDecl",
+                ((parent :> id_t), name, name'),
+                Triple (identifier, Names.extensionname, Names.extensionname) )
+        | `Exception (parent, name) ->
+            C
+              ( "`Exception",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.exceptionname) )
+        | `CoreException name -> C ("`CoreException", name, Names.exceptionname)
+        | `Value (parent, name) ->
+            C
+              ( "`Value",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.valuename) )
+        | `Method (parent, name) ->
+            C
+              ( "`Method",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.methodname) )
+        | `InstanceVariable (parent, name) ->
+            C
+              ( "`InstanceVariable",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.instancevariablename) )
+        | `Label (parent, name) ->
+            C
+              ( "`Label",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.labelname) )
+        | `SourceDir (parent, name) ->
+            C ("`SourceDir", ((parent :> id_t), name), Pair (identifier, string))
+        | `SourcePage (parent, name) ->
+            C
+              ( "`SourcePage",
+                ((parent :> id_t), name),
+                Pair (identifier, string) )
+        | `SourceLocation (parent, name) ->
+            C
+              ( "`SourceLocation",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.defname) )
+        | `SourceLocationInternal (parent, name) ->
+            C
+              ( "`SourceLocationInternal",
+                ((parent :> id_t), name),
+                Pair (identifier, Names.localname) )
+        | `SourceLocationMod parent ->
+            C ("`SourceLocationMod", (parent :> id_t), identifier))
 
   let reference_tag : tag t =
     Variant
@@ -158,6 +189,7 @@ module General_paths = struct
       | `TConstructor -> C0 "`TConstructor"
       | `TException -> C0 "`TException"
       | `TExtension -> C0 "`TExtension"
+      | `TExtensionDecl -> C0 "`TExtensionDecl"
       | `TField -> C0 "`TField"
       | `TInstanceVariable -> C0 "`TInstanceVariable"
       | `TLabel -> C0 "`TLabel"
@@ -202,11 +234,8 @@ module General_paths = struct
             ( "`Apply",
               ((x1 :> rp), (x2 :> rp)),
               Pair (resolved_path, resolved_path) )
-      | `Alias (x1, x2) ->
-          C
-            ( "`Alias",
-              ((x1 :> rp), (x2 :> rp)),
-              Pair (resolved_path, resolved_path) )
+      | `Alias (dest, src) ->
+          C ("`Alias", ((dest :> rp), (src :> p)), Pair (resolved_path, path))
       | `AliasModuleType (x1, x2) ->
           C
             ( "`AliasModuleType",
@@ -233,9 +262,21 @@ module General_paths = struct
             ( "`CanonicalType",
               ((x1 :> rp), (x2 :> p)),
               Pair (resolved_path, path) )
+      | `CanonicalDataType (x1, x2) ->
+          C
+            ( "`CanonicalDataType",
+              ((x1 :> rp), (x2 :> p)),
+              Pair (resolved_path, path) )
       | `OpaqueModuleType x -> C ("`OpaqueModuleType", (x :> rp), resolved_path)
       | `Type (x1, x2) ->
           C ("`Type", ((x1 :> rp), x2), Pair (resolved_path, Names.typename))
+      | `Value (x1, x2) ->
+          C ("`Value", ((x1 :> rp), x2), Pair (resolved_path, Names.valuename))
+      | `Constructor (x1, x2) ->
+          C
+            ( "`Constructor",
+              ((x1 :> rp), x2),
+              Pair (resolved_path, Names.constructorname) )
       | `Class (x1, x2) ->
           C ("`Class", ((x1 :> rp), x2), Pair (resolved_path, Names.classname))
       | `ClassType (x1, x2) ->
@@ -271,6 +312,11 @@ module General_paths = struct
             ( "`Extension",
               ((x1 :> r), x2),
               Pair (reference, Names.extensionname) )
+      | `ExtensionDecl (x1, x2) ->
+          C
+            ( "`ExtensionDecl",
+              ((x1 :> r), x2),
+              Pair (reference, Names.extensionname) )
       | `Exception (x1, x2) ->
           C
             ( "`Exception",
@@ -298,11 +344,6 @@ module General_paths = struct
   and resolved_reference : rr t =
     Variant
       (function
-      | `Canonical (x1, x2) ->
-          C
-            ( "`Canonical",
-              ((x1 :> rr), (x2 :> r)),
-              Pair (resolved_reference, reference) )
       | `Class (x1, x2) ->
           C
             ( "`Class",
@@ -328,6 +369,13 @@ module General_paths = struct
             ( "`Extension",
               ((x1 :> rr), x2),
               Pair (resolved_reference, Names.extensionname) )
+      | `ExtensionDecl (x1, x2, x3) ->
+          C
+            ( "`ExtensionDecl",
+              ((x1 :> rr), x2, x3),
+              Triple
+                (resolved_reference, Names.extensionname, Names.extensionname)
+            )
       | `Field (x1, x2) ->
           C
             ( "`Field",
@@ -438,7 +486,7 @@ let root = Root.t
 let modulename = Names.modulename
 
 (* Indirection seems to be required to make the type open. *)
-let identifier : [< Paths.Identifier.t ] Type_desc.t =
+let identifier : [< Paths.Identifier.t_pv ] Paths.Identifier.id Type_desc.t =
   Indirect ((fun n -> (n :> Paths.Identifier.t)), General_paths.identifier)
 
 let resolved_path : [< Paths.Path.Resolved.t ] Type_desc.t =

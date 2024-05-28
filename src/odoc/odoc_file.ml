@@ -17,14 +17,17 @@
 open Odoc_model
 open Or_error
 
+type unit_content = Lang.Compilation_unit.t
+
 type content =
   | Page_content of Lang.Page.t
-  | Unit_content of Lang.Compilation_unit.t
+  | Source_tree_content of Lang.SourceTree.t
+  | Unit_content of unit_content
 
 type t = { content : content; warnings : Odoc_model.Error.t list }
 
 (** Written at the top of the files. Checked when loading. *)
-let magic = "odoc-2.1.1"
+let magic = "odoc-2.4.1"
 
 (** Exceptions while saving are allowed to leak. *)
 let save_unit file (root : Root.t) (t : t) =
@@ -44,12 +47,25 @@ let save_page file ~warnings page =
   in
   save_unit file page.Lang.Page.root { content = Page_content page; warnings }
 
+let save_source_tree file ~warnings src_page =
+  let dir = Fs.File.dirname file in
+  let base = Fs.File.(to_string @@ basename file) in
+  let file =
+    if Astring.String.is_prefix ~affix:"src-" base then file
+    else Fs.File.create ~directory:dir ~name:("src-" ^ base)
+  in
+  save_unit file src_page.Lang.SourceTree.root
+    { content = Source_tree_content src_page; warnings }
+
 let save_unit file ~warnings m =
   save_unit file m.Lang.Compilation_unit.root
     { content = Unit_content m; warnings }
 
 let load_ file f =
   let file = Fs.File.to_string file in
+  (if Sys.file_exists file then Ok file
+   else Error (`Msg (Printf.sprintf "File does not exist")))
+  >>= fun file ->
   let ic = open_in_bin file in
   let res =
     try

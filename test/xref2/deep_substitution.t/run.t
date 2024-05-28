@@ -19,14 +19,25 @@ its RHS correctly replaced with an `int`
   $ odoc compile m.cmti
   $ odoc link m.odoc
   $ odoc html-generate m.odocl --indent -o .
-  $ odoc_print m.odocl -r T.t
+  $ odoc_print m.odocl -r T.t | jq .
   {
     "id": {
       "`Type": [
-        { "`ModuleType": [ { "`Root": [ "None", "M" ] }, "T" ] },
+        {
+          "`ModuleType": [
+            {
+              "`Root": [
+                "None",
+                "M"
+              ]
+            },
+            "T"
+          ]
+        },
         "t"
       ]
     },
+    "locs": "None",
     "doc": [],
     "equation": {
       "params": [],
@@ -34,7 +45,13 @@ its RHS correctly replaced with an `int`
       "manifest": {
         "Some": {
           "Constr": [
-            { "`Resolved": { "`Identifier": { "`CoreType": "int" } } },
+            {
+              "`Resolved": {
+                "`Identifier": {
+                  "`CoreType": "int"
+                }
+              }
+            },
             []
           ]
         }
