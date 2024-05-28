@@ -6,11 +6,9 @@ end =
   Class
 
 and InternalLink : sig
-  type resolved = Url.t * Inline.t
+  type target = Resolved of Url.t | Unresolved
 
-  type unresolved = Inline.t
-
-  type t = Resolved of resolved | Unresolved of Inline.t
+  type t = { target : target; content : Inline.t; tooltip : string option }
 end =
   InternalLink
 
@@ -30,6 +28,11 @@ and Source : sig
 end =
   Source
 
+and Math : sig
+  type t = string
+end =
+  Math
+
 and Inline : sig
   type entity = string
 
@@ -47,6 +50,7 @@ and Inline : sig
     | Link of href * t
     | InternalLink of InternalLink.t
     | Source of Source.t
+    | Math of Math.t
     | Raw_markup of Raw_markup.t
 end =
   Inline
@@ -59,11 +63,19 @@ end =
   Description
 
 and Heading : sig
-  type t = { label : string option; level : int; title : Inline.t }
+  type t = {
+    label : string option;
+    level : int;
+    title : Inline.t;
+    source_anchor : Url.t option;
+        (** Used for the source link of the item displayed on the page. *)
+  }
 end =
   Heading
 
 and Block : sig
+  type lang_tag = string
+
   type t = one list
 
   and one = { attr : Class.t; desc : desc }
@@ -73,13 +85,25 @@ and Block : sig
     | Paragraph of Inline.t
     | List of list_type * t list
     | Description of Description.t
-    | Source of Source.t
+    | Source of lang_tag * Source.t
+    | Math of Math.t
     | Verbatim of string
     | Raw_markup of Raw_markup.t
+    | Table of t Table.t
 
   and list_type = Ordered | Unordered
 end =
   Block
+
+and Table : sig
+  type alignment = Left | Center | Right | Default
+
+  type 'a t = {
+    data : ('a * [ `Header | `Data ]) list list;
+    align : alignment list;
+  }
+end =
+  Table
 
 and DocumentedSrc : sig
   type 'a documented = {
@@ -133,9 +157,8 @@ and Item : sig
     anchor : Url.Anchor.t option;
     content : 'a;
     doc : Block.t;
+    source_anchor : Url.Anchor.t option;
   }
-
-  type declaration = DocumentedSrc.t item
 
   type text = Block.t
 
@@ -149,13 +172,34 @@ end =
 
 and Page : sig
   type t = {
-    title : string;
-    header : Item.t list;
+    preamble : Item.t list;
     items : Item.t list;
     url : Url.Path.t;
+    source_anchor : Url.t option;
+        (** Url to the corresponding source code. Might be a whole source file
+            or a sub part. *)
   }
 end =
   Page
+
+and Source_page : sig
+  type info = Syntax of string | Anchor of string | Link of Url.Anchor.t
+
+  type code = span list
+  and span = Tagged_code of info * code | Plain_code of string
+
+  type t = { url : Url.Path.t; contents : code }
+end =
+  Source_page
+
+and Asset : sig
+  type t = { url : Url.Path.t; src : Fpath.t }
+end =
+  Asset
+
+module Document = struct
+  type t = Page of Page.t | Source_page of Source_page.t | Asset of Asset.t
+end
 
 let inline ?(attr = []) desc = Inline.{ attr; desc }
 

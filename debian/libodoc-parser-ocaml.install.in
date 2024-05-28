@@ -1,0 +1,3 @@
+@OCamlStdlibDir@/odoc-parser/META
+@OCamlStdlibDir@/odoc-parser/*.cma
+DYN: @OCamlStdlibDir@/odoc-parser/*.cmxs

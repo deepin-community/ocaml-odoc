@@ -14,8 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+
 open Asttypes
-open Types
 open Typedtree
 
 module OCamlPath = Path
@@ -25,11 +25,11 @@ open Odoc_model.Lang
 
 module Env = Ident_env
 
-
 let read_core_type env ctyp =
   Cmi.read_type_expr env ctyp.ctyp_type
 
 let rec read_pattern env parent doc pat =
+  let locs _id = None in
   let open Signature in
     match pat.pat_desc with
     | Tpat_any -> []
@@ -39,14 +39,14 @@ let rec read_pattern env parent doc pat =
           Cmi.mark_type_expr pat.pat_type;
           let type_ = Cmi.read_type_expr env pat.pat_type in
           let value = Abstract in
-          [Value {id; doc; type_; value}]
+          [Value {id; locs = locs id; doc; type_; value}]
     | Tpat_alias(pat, id, _) ->
         let open Value in
         let id = Env.find_value_identifier env id in
           Cmi.mark_type_expr pat.pat_type;
           let type_ = Cmi.read_type_expr env pat.pat_type in
           let value = Abstract in
-          Value {id; doc; type_; value} :: read_pattern env parent doc pat
+          Value {id; locs = locs id; doc; type_; value} :: read_pattern env parent doc pat
     | Tpat_constant _ -> []
     | Tpat_tuple pats ->
         List.concat (List.map (read_pattern env parent doc) pats)
@@ -111,7 +111,7 @@ let read_type_extension env parent tyext =
   in
   let type_params =
     List.map
-      (Cmi.read_type_parameter false Variance.null)
+      (Cmi.read_type_parameter false Types.Variance.null)
       type_params
   in
   let private_ = (tyext.tyext_private = Private) in
@@ -122,32 +122,39 @@ let read_type_extension env parent tyext =
            env parent ext.ext_id ext.ext_type)
       tyext.tyext_constructors
   in
-    { parent; type_path; doc; type_params; private_; constructors; }
+  { parent; type_path; doc; type_params; private_; constructors; }
+
+(** Make a standalone comment out of a comment attached to an item that isn't
+    rendered. For example, [constraint] items are read separately and not
+    associated with their comment. *)
+let mk_class_comment = function
+  | [] -> None
+  | doc -> Some (ClassSignature.Comment (`Docs doc))
 
 let rec read_class_type_field env parent ctf =
   let open ClassSignature in
   let open Odoc_model.Names in
-
   let container = (parent : Identifier.ClassSignature.t :> Identifier.LabelParent.t) in
   let doc = Doc_attr.attached_no_tag container ctf.ctf_attributes in
   match ctf.ctf_desc with
   | Tctf_val(name, mutable_, virtual_, typ) ->
       let open InstanceVariable in
-      let id = `InstanceVariable(parent, InstanceVariableName.make_std name) in
+      let id = Identifier.Mk.instance_variable(parent, InstanceVariableName.make_std name) in
       let mutable_ = (mutable_ = Mutable) in
       let virtual_ = (virtual_ = Virtual) in
       let type_ = read_core_type env typ in
         Some (InstanceVariable {id; doc; mutable_; virtual_; type_})
   | Tctf_method(name, private_, virtual_, typ) ->
       let open Method in
-      let id = `Method(parent, MethodName.make_std name) in
+      let id = Identifier.Mk.method_(parent, MethodName.make_std name) in
       let private_ = (private_ = Private) in
       let virtual_ = (virtual_ = Virtual) in
       let type_ = read_core_type env typ in
         Some (Method {id; doc; private_; virtual_; type_})
-  | Tctf_constraint(_, _) -> None
+  | Tctf_constraint(_, _) -> mk_class_comment doc
   | Tctf_inherit cltyp ->
-      Some (Inherit (read_class_signature env parent [] cltyp))
+      let expr = read_class_signature env parent [] cltyp in
+      Some (Inherit {Inherit.expr; doc})
   | Tctf_attribute attr ->
       match Doc_attr.standalone container attr with
       | None -> None
@@ -165,14 +172,7 @@ and read_class_signature env parent params cltyp =
         let self =
           Cmi.read_self_type csig.csig_self.ctyp_type
         in
-        let constraints =
-          Cmi.read_type_constraints env params
-        in
-        let constraints =
-          List.map
-            (fun (typ1, typ2) -> Constraint(typ1, typ2))
-            constraints
-        in
+        let constraints = Cmi.read_class_constraints env params in
         let items =
           List.fold_left
             (fun rest item ->
@@ -220,7 +220,7 @@ let rec read_class_field env parent cf =
   match cf.cf_desc with
   | Tcf_val({txt = name; _}, mutable_, _, kind, _) ->
       let open InstanceVariable in
-      let id = `InstanceVariable(parent, InstanceVariableName.make_std name) in
+      let id = Identifier.Mk.instance_variable(parent, InstanceVariableName.make_std name) in
       let mutable_ = (mutable_ = Mutable) in
       let virtual_, type_ =
         match kind with
@@ -232,20 +232,29 @@ let rec read_class_field env parent cf =
         Some (InstanceVariable {id; doc; mutable_; virtual_; type_})
   | Tcf_method({txt = name; _}, private_, kind) ->
       let open Method in
-      let id = `Method(parent, MethodName.make_std name) in
+      let id = Identifier.Mk.method_(parent, MethodName.make_std name) in
       let private_ = (private_ = Private) in
       let virtual_, type_ =
         match kind with
         | Tcfk_virtual typ ->
             true, read_core_type env typ
         | Tcfk_concrete(_, expr) ->
-            false, Cmi.read_type_expr env expr.exp_type
+            (* Types of concrete methods in class implementation begin
+               with the object as first (implicit) argument, so we
+               must keep only the type after the first arrow. *)
+            let type_ =
+              match Cmi.read_type_expr env expr.exp_type with
+              | Arrow (_, _, t) -> t
+              | t -> t
+            in
+            false, type_
       in
         Some (Method {id; doc; private_; virtual_; type_})
-  | Tcf_constraint(_, _) -> None
+  | Tcf_constraint(_, _) -> mk_class_comment doc
   | Tcf_inherit(_, cl, _, _, _) ->
-      Some (Inherit (read_class_structure env parent [] cl))
-  | Tcf_initializer _ -> None
+      let expr = read_class_structure env parent [] cl in
+      Some (Inherit {Inherit.expr; doc})
+  | Tcf_initializer _ -> mk_class_comment doc
   | Tcf_attribute attr ->
       match Doc_attr.standalone container attr with
       | None -> None
@@ -259,14 +268,7 @@ and read_class_structure env parent params cl =
     | Tcl_structure cstr ->
         let open ClassSignature in
         let self = Cmi.read_self_type cstr.cstr_self.pat_type in
-        let constraints =
-          Cmi.read_type_constraints env params
-        in
-        let constraints =
-          List.map
-            (fun (typ1, typ2) -> Constraint(typ1, typ2))
-            constraints
-        in
+        let constraints = Cmi.read_class_constraints env params in
         let items =
           List.fold_left
             (fun rest item ->
@@ -322,6 +324,7 @@ let rec read_class_expr env parent params cl =
 let read_class_declaration env parent cld =
   let open Class in
   let id = Env.find_class_identifier env cld.ci_id_class in
+  let locs = None in
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t) in
   let doc = Doc_attr.attached_no_tag container cld.ci_attributes in
     Cmi.mark_class_declaration cld.ci_decl;
@@ -331,11 +334,11 @@ let read_class_declaration env parent cld =
     in
     let params =
       List.map
-        (Cmi.read_type_parameter false Variance.null)
+        (Cmi.read_type_parameter false Types.Variance.null)
         clparams
     in
     let type_ = read_class_expr env (id :> Identifier.ClassSignature.t) clparams cld.ci_expr in
-      { id; doc; virtual_; params; type_; expansion = None }
+    { id; locs; doc; virtual_; params; type_; expansion = None }
 
 let read_class_declarations env parent clds =
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t) in
@@ -364,35 +367,38 @@ let rec read_module_expr env parent label_parent mexpr =
           match parameter with
           | Unit -> FunctorParameter.Unit, env
           | Named (id_opt, _, arg) ->
-              let name, env =
+              let id, env =
                 match id_opt with
-                | Some id -> Ident.name id, Env.add_parameter parent id (ParameterName.of_ident id) env
-                | None -> "_", env
+                | None -> Identifier.Mk.parameter (parent, Odoc_model.Names.ModuleName.make_std "_"), env
+                | Some id -> let env = Env.add_parameter parent id (ModuleName.of_ident id) env in
+                  Env.find_parameter_identifier env id, env
               in
-              let id = `Parameter(parent, Odoc_model.Names.ParameterName.make_std name) in
-              let arg = Cmti.read_module_type env id label_parent arg in
-              
+              let arg = Cmti.read_module_type env (id :> Identifier.Signature.t) label_parent arg in
+
               Named { id; expr=arg }, env
           in
-        let res = read_module_expr env (`Result parent) label_parent res in
+        let res = read_module_expr env (Identifier.Mk.result parent) label_parent res in
         Functor (f_parameter, res)
 #else
     | Tmod_functor(id, _, arg, res) ->
+        let new_env = Env.add_parameter parent id (ModuleName.of_ident id) env in
         let f_parameter =
           match arg with
           | None -> FunctorParameter.Unit
           | Some arg ->
-              let name = Ident.name id in
-              let id = `Parameter(parent, ParameterName.make_std name) in
-          let arg = Cmti.read_module_type env id label_parent arg in
-          Named { FunctorParameter. id; expr = arg; }
+              let id = Env.find_parameter_identifier new_env id in
+              let arg = Cmti.read_module_type env (id :> Identifier.Signature.t) label_parent arg in
+              Named { FunctorParameter. id; expr = arg; }
         in
-        let env = Env.add_parameter parent id (ParameterName.of_ident id) env in
-        let res = read_module_expr env (`Result parent) label_parent res in
+        let res = read_module_expr new_env (Identifier.Mk.result parent) label_parent res in
         Functor(f_parameter, res)
 #endif
     | Tmod_apply _ ->
         Cmi.read_module_type env parent (Odoc_model.Compat.module_type mexpr.mod_type)
+#if OCAML_VERSION >= (5,1,0)
+    | Tmod_apply_unit _ ->
+        Cmi.read_module_type env parent (Odoc_model.Compat.module_type mexpr.mod_type)
+#endif
     | Tmod_constraint(_, _, Tmodtype_explicit mty, _) ->
         Cmti.read_module_type env parent label_parent mty
     | Tmod_constraint(mexpr, _, Tmodtype_implicit, _) ->
@@ -426,6 +432,7 @@ and read_module_binding env parent mb =
   let id = Env.find_module_identifier env mb.mb_id in
 #endif
   let id = (id :> Identifier.Module.t) in
+  let locs = None in
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t) in
   let doc, canonical = Doc_attr.attached Odoc_model.Semantics.Expect_canonical container mb.mb_attributes in
   let type_, canonical =
@@ -450,7 +457,7 @@ and read_module_binding env parent mb =
     | _ -> false
 #endif
   in
-  Some {id; doc; type_; canonical; hidden; }
+  Some {id; locs; doc; type_; canonical; hidden; }
 
 and read_module_bindings env parent mbs =
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t)
@@ -534,7 +541,7 @@ and read_structure_item env parent item =
 
 and read_include env parent incl =
   let open Include in
-  let loc = Cmi.read_location incl.incl_loc in
+  let loc = Doc_attr.read_location incl.incl_loc in
   let container = (parent : Identifier.Signature.t :> Identifier.LabelParent.t) in
   let doc, status = Doc_attr.attached Odoc_model.Semantics.Expect_status container incl.incl_attributes in
   let decl_modty =
@@ -546,19 +553,11 @@ and read_include env parent incl =
       umty_of_mty mty
   in
   let content, shadowed = Cmi.read_signature_noenv env parent (Odoc_model.Compat.signature incl.incl_type) in
-  let rec contains_signature = function
-    | ModuleType.U.Signature _ -> true
-    | Path _ -> false
-    | With (_, w_expr) -> contains_signature w_expr
-    | TypeOf _ -> false
-  in 
+  let expansion = { content; shadowed; } in
   match decl_modty with
-  | Some m when not (contains_signature m) ->
+  | Some m ->
     let decl = ModuleType m in
-    let expansion = { content; shadowed; } in
     [Include {parent; doc; decl; expansion; status; strengthened=None; loc }]
-  | Some (ModuleType.U.Signature { items; _ }) ->
-    items
   | _ ->
     content.items
 
@@ -601,9 +600,9 @@ and read_structure :
     ({ Signature.items = Comment (`Docs doc_post) :: items; compiled=false; doc }, tags)
 
 let read_implementation root name impl =
-  let id = `Root (root, Odoc_model.Names.ModuleName.make_std name) in
+  let id = Identifier.Mk.root (root, Odoc_model.Names.ModuleName.make_std name) in
   let sg, canonical =
-    read_structure Odoc_model.Semantics.Expect_canonical Env.empty id impl
+    read_structure Odoc_model.Semantics.Expect_canonical (Env.empty ()) id impl
   in
   (id, sg, (canonical :> Odoc_model.Paths.Path.Module.t option))
 

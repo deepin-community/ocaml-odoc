@@ -43,9 +43,9 @@ There are two references in N, one should point to a local label and the other t
   $ cat html/test/Test/N/index.html
   <!DOCTYPE html>
   <html xmlns="http://www.w3.org/1999/xhtml">
-   <head><title>N (test.Test.N)</title>
-    <link rel="stylesheet" href="../../../odoc.css"/><meta charset="utf-8"/>
-    <meta name="generator" content="odoc 2.1.1"/>
+   <head><title>N (test.Test.N)</title><meta charset="utf-8"/>
+    <link rel="stylesheet" href="../../../odoc.css"/>
+    <meta name="generator" content="odoc 2.4.1"/>
     <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <script src="../../../highlight.pack.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>
@@ -63,7 +63,7 @@ There are two references in N, one should point to a local label and the other t
     </nav>
     <div class="odoc-content">
      <h2 id="B"><a href="#B" class="anchor"></a>An other conflicting label</h2>
-     <p><a href="#B">An other conflicting label</a> 
+     <p><a href="#B" title="B">An other conflicting label</a> 
       <a href="../M/index.html#B"><code>B</code></a>
      </p>
     </div>
@@ -76,9 +76,9 @@ The second occurence of 'B' in the main page should be disambiguated
   $ cat html/test/Test/index.html
   <!DOCTYPE html>
   <html xmlns="http://www.w3.org/1999/xhtml">
-   <head><title>Test (test.Test)</title>
-    <link rel="stylesheet" href="../../odoc.css"/><meta charset="utf-8"/>
-    <meta name="generator" content="odoc 2.1.1"/>
+   <head><title>Test (test.Test)</title><meta charset="utf-8"/>
+    <link rel="stylesheet" href="../../odoc.css"/>
+    <meta name="generator" content="odoc 2.4.1"/>
     <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <script src="../../highlight.pack.js"></script>
     <script>hljs.initHighlightingOnLoad();</script>
@@ -93,14 +93,14 @@ The second occurence of 'B' in the main page should be disambiguated
     <nav class="odoc-toc">
      <ul><li><a href="#A">First label</a></li>
       <li><a href="#B">Floating label</a></li>
-      <li><a href="#B_4">Dupplicate B</a></li>
+      <li><a href="#B_2">Dupplicate B</a></li>
      </ul>
     </nav>
     <div class="odoc-content">
      <h2 id="A"><a href="#A" class="anchor"></a>First label</h2>
      <h2 id="B"><a href="#B" class="anchor"></a>Floating label</h2>
      <div class="odoc-spec">
-      <div class="spec module" id="module-M" class="anchored">
+      <div class="spec module anchored" id="module-M">
        <a href="#module-M" class="anchor"></a>
        <code>
         <span><span class="keyword">module</span> <a href="M/index.html">M</a>
@@ -112,7 +112,7 @@ The second occurence of 'B' in the main page should be disambiguated
       </div>
      </div>
      <div class="odoc-spec">
-      <div class="spec module" id="module-N" class="anchored">
+      <div class="spec module anchored" id="module-N">
        <a href="#module-N" class="anchor"></a>
        <code>
         <span><span class="keyword">module</span> <a href="N/index.html">N</a>
@@ -122,10 +122,11 @@ The second occurence of 'B' in the main page should be disambiguated
         </span>
        </code>
       </div>
-     </div><h2 id="B_4"><a href="#B_4" class="anchor"></a>Dupplicate B</h2>
+     </div><h2 id="B_2"><a href="#B_2" class="anchor"></a>Dupplicate B</h2>
      <p>Define <code>B</code> again in the same scope.</p>
      <p>References to the labels:</p>
-     <p><a href="#A">First label</a> <a href="#B">Dupplicate B</a> 
+     <p><a href="#A" title="A">First label</a> 
+      <a href="#B" title="B">Dupplicate B</a> 
       <a href="M/index.html#C"><code>C</code></a> 
       <a href="M/index.html#D"><code>D</code></a> 
       <a href="M/index.html#B"><code>B</code></a> 

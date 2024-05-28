@@ -17,30 +17,44 @@
 open StdLabels
 open Or_error
 
+module Odoc_compile = Compile
+
 module Compile = struct
   type t = { unit_name : string; digest : Digest.t }
 
   let name t = t.unit_name
 
   let digest t = t.digest
+
+  let compare t1 t2 =
+    match String.compare (name t1) (name t2) with
+    | 0 -> Digest.compare (digest t1) (digest t2)
+    | n -> n
 end
+
+module Compile_set = Set.Make (Compile)
 
 let add_dep acc = function
   | _, None -> acc (* drop module aliases *)
-  | unit_name, Some digest -> { Compile.unit_name; digest } :: acc
+  | unit_name, Some digest -> Compile_set.add { Compile.unit_name; digest } acc
 
-let for_compile_step_cmt file =
+let for_compile_step_cmt acc file =
   let cmt_infos = Cmt_format.read_cmt (Fs.File.to_string file) in
-  List.fold_left ~f:add_dep ~init:[] cmt_infos.Cmt_format.cmt_imports
+  List.fold_left ~f:add_dep ~init:acc cmt_infos.Cmt_format.cmt_imports
 
-let for_compile_step_cmi_or_cmti file =
+let for_compile_step_cmi_or_cmti acc file =
   let cmi_infos = Cmi_format.read_cmi (Fs.File.to_string file) in
-  List.fold_left ~f:add_dep ~init:[] cmi_infos.Cmi_format.cmi_crcs
+  List.fold_left ~f:add_dep ~init:acc cmi_infos.Cmi_format.cmi_crcs
 
-let for_compile_step file =
-  match Fs.File.has_ext "cmt" file with
-  | true -> for_compile_step_cmt file
-  | false -> for_compile_step_cmi_or_cmti file
+let for_compile_step files =
+  let set =
+    List.fold_left
+      ~f:(fun acc file ->
+        if Fs.File.has_ext "cmt" file then for_compile_step_cmt acc file
+        else for_compile_step_cmi_or_cmti acc file)
+      ~init:Compile_set.empty files
+  in
+  Compile_set.fold (fun a b -> a :: b) set []
 
 module Hash_set : sig
   type t
@@ -66,7 +80,8 @@ end
 let deps_of_odoc_file ~deps input =
   Odoc_file.load input >>= fun unit ->
   match unit.content with
-  | Page_content _ -> Ok () (* XXX something should certainly be done here *)
+  | Page_content _ | Source_tree_content _ ->
+      Ok () (* XXX something should certainly be done here *)
   | Unit_content unit ->
       List.iter unit.Odoc_model.Lang.Compilation_unit.imports ~f:(fun import ->
           match import with
